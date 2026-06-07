@@ -1,0 +1,497 @@
+import { useState, useEffect, useContext } from 'react'
+import { Activity, TrendingUp, TrendingDown, Minus, RefreshCw, DollarSign, Coins, Gem, LineChart, Filter, User, LogOut, Bookmark, BookmarkCheck, Bitcoin, Wallet, Plus, ShieldAlert, Edit2, Trash2 } from 'lucide-react'
+import { LineChart as RechartsLineChart, Line, ResponsiveContainer, YAxis } from 'recharts'
+import { AuthProvider, AuthContext } from './context/AuthContext'
+import LoginModal from './components/LoginModal'
+import CorrelationChart from './components/CorrelationChart'
+import ChatbotWidget from './components/ChatbotWidget'
+import PortfolioModal from './components/PortfolioModal'
+
+function Dashboard() {
+  const { user, watchlists, logout, addToWatchlist, removeFromWatchlist } = useContext(AuthContext)
+  
+  const [news, setNews] = useState([])
+  const [market, setMarket] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState(null)
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+  const [portfolioModalData, setPortfolioModalData] = useState(null)
+  const { portfolioReport, portfolio, removeFromPortfolio } = useContext(AuthContext)
+  
+  // Filters and Pagination
+  const [offset, setOffset] = useState(0)
+  const [assetFilter, setAssetFilter] = useState("")
+  const [sentimentFilter, setSentimentFilter] = useState("")
+  const [showWatchlistOnly, setShowWatchlistOnly] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+
+  const fetchData = async (isLoadMore = false) => {
+    if (isLoadMore) setLoadingMore(true)
+    else setLoading(true)
+    
+    setError(null)
+    try {
+      const currentOffset = isLoadMore ? offset + 50 : 0
+      if (!isLoadMore) setOffset(0)
+
+      let newsUrl = `http://localhost:8000/api/sentiment/latest?limit=50&offset=${currentOffset}`
+      if (assetFilter) newsUrl += `&asset_type=${assetFilter}`
+      if (sentimentFilter) newsUrl += `&sentiment_label=${sentimentFilter}`
+
+      const promises = [fetch(newsUrl)]
+      if (!isLoadMore) promises.push(fetch('http://localhost:8000/api/market/ticker'))
+
+      const responses = await Promise.all(promises)
+      const newsRes = responses[0]
+      if (!newsRes.ok) throw new Error('Haber ağ hatası: ' + newsRes.status)
+      
+      const newsData = await newsRes.json()
+      
+      if (newsData.length < 50) setHasMore(false)
+      else setHasMore(true)
+
+      let finalNews = newsData;
+      // Eğer "Sadece Takip Ettiklerim" seçiliyse, frontend'de filtrele
+      if (showWatchlistOnly && user && watchlists.length > 0) {
+         const trackedAssets = watchlists.map(w => w.asset_type);
+         
+         const impliedCategories = new Set(trackedAssets);
+         if (trackedAssets.includes("GOLD") || trackedAssets.includes("BIST100") || trackedAssets.includes("USD_TRY")) {
+            impliedCategories.add("GENERAL");
+         }
+         if (trackedAssets.includes("BTC")) {
+            impliedCategories.add("CRYPTO");
+         }
+
+         finalNews = newsData.filter(item => impliedCategories.has(item.asset_type));
+      } else if (showWatchlistOnly && user && watchlists.length === 0) {
+         finalNews = []; // Takip listesi boşsa hiç haber gösterme
+      }
+
+      if (isLoadMore) {
+        setNews(prev => {
+          // Gelen verideki id'ler prev içinde var mı kontrol et, yoksa ekle (duplicate önlemi)
+          const existingIds = new Set(prev.map(item => item.id));
+          const newItems = finalNews.filter(item => !existingIds.has(item.id));
+          return [...prev, ...newItems];
+        })
+        setOffset(currentOffset)
+      } else {
+        setNews(finalNews)
+        if (responses.length > 1) {
+          const marketRes = responses[1]
+          if (!marketRes.ok) throw new Error('Piyasa ağ hatası: ' + marketRes.status)
+          const marketData = await marketRes.json()
+          
+          // Calculate Gram Gold dynamically
+          if (marketData && marketData.GOLD && marketData.USD_TRY) {
+            const goldOunce = marketData.GOLD.price;
+            const usdTry = marketData.USD_TRY.price;
+            const gramGold = (goldOunce / 31.1034768) * usdTry;
+            
+            const goldPrev = marketData.GOLD.prev_close || goldOunce;
+            const usdPrev = marketData.USD_TRY.prev_close || usdTry;
+            const gramPrev = (goldPrev / 31.1034768) * usdPrev;
+            const gramChange = gramGold - gramPrev;
+            const gramChangePct = gramPrev ? (gramChange / gramPrev) * 100 : 0;
+            
+            marketData.GRAM_GOLD = {
+              price: gramGold,
+              prev_close: gramPrev,
+              change: gramChange,
+              change_pct: gramChangePct,
+              is_up: gramChange >= 0,
+              history: marketData.GOLD.history ? marketData.GOLD.history.map(h => ({
+                ...h,
+                value: (h.value / 31.1034768) * usdTry // Rough approximation for sparkline
+              })) : []
+            };
+          }
+          
+          setMarket(marketData)
+        }
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData(false)
+  }, [assetFilter, sentimentFilter, showWatchlistOnly, watchlists])
+
+  useEffect(() => {
+    const interval = setInterval(() => fetchData(false), 60000)
+    return () => clearInterval(interval)
+  }, [assetFilter, sentimentFilter, showWatchlistOnly, watchlists])
+
+  const total = news.length || 1
+  const positive = news.filter(n => n.sentiment_label === 'positive').length
+  const negative = news.filter(n => n.sentiment_label === 'negative').length
+  const neutral = news.filter(n => n.sentiment_label === 'neutral').length
+  
+  const score = (positive - negative) / total
+  let marketMood = "Nötr (Durağan)"
+  let moodClass = "text-blue-400"
+  
+  if (score > 0.2) { marketMood = "Güçlü Boğa Piyasası"; moodClass = "text-green-400 glow-text-green" }
+  else if (score < -0.2) { marketMood = "Riskli Ayı Piyasası"; moodClass = "text-red-400 glow-text-red" }
+
+  const handleWatchlistToggle = async (e, assetType) => {
+    e.preventDefault();
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    
+    const existing = watchlists.find(w => w.asset_type === assetType);
+    if (existing) {
+      await removeFromWatchlist(existing.id);
+    } else {
+      await addToWatchlist(assetType);
+    }
+  };
+
+  const isWatched = (assetType) => watchlists.some(w => w.asset_type === assetType);
+
+  const renderTicker = (key, icon, label, prefix = "", assetType = "") => {
+    if (!market || !market[key]) return null;
+    const data = market[key];
+    const isUp = data.is_up;
+    const colorClass = isUp ? "text-green-400 glow-text-green" : "text-red-400 glow-text-red";
+    const Arrow = isUp ? "▲" : "▼";
+    const formattedPrice = Number(data.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedPct = Math.abs(data.change_pct).toFixed(2);
+    
+    const chartData = data.history ? data.history.map((val, idx) => ({ 
+      value: typeof val === 'object' && val !== null ? val.price : val, 
+      index: idx 
+    })) : [];
+    const strokeColor = isUp ? "#4ade80" : "#f87171";
+
+    const dbKey = key === "GRAM_GOLD" ? "GOLD" : key;
+    const hasAsset = portfolio?.some(p => p.symbol === dbKey && p.amount > 0);
+
+    return (
+      <div className="ticker-item neon-border" key={key}>
+        <div className="ticker-bg-chart">
+          {chartData.length > 0 && (
+            <ResponsiveContainer width="100%" height="100%">
+              <RechartsLineChart data={chartData}>
+                <YAxis domain={['auto', 'auto']} hide />
+                <Line type="monotone" dataKey="value" stroke={strokeColor} strokeWidth={2} dot={false} isAnimationActive={false} />
+              </RechartsLineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div className="ticker-content-wrapper">
+          {icon}
+          <div className="ticker-info" style={{ flexGrow: 1 }}>
+            <span className="ticker-name">{label}</span>
+            <div className="ticker-values">
+              <span className={`ticker-price ${colorClass}`}>{prefix}{formattedPrice}</span>
+              <span className={`ticker-pct ${colorClass}`}>{Arrow} %{formattedPct}</span>
+            </div>
+          </div>
+          {assetType && (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button 
+                className="watchlist-btn"
+                onClick={() => user ? setPortfolioModalData({ 
+                  symbol: dbKey, 
+                  assetName: key === "GRAM_GOLD" ? "Altın (ONS / Gram)" : label,
+                  currentPriceUsd: market[dbKey]?.price || 0,
+                  usdTryRate: market?.USD_TRY?.price || 1,
+                  defaultTab: key === "GRAM_GOLD" ? "try" : "amount"
+                }) : setIsLoginModalOpen(true)}
+                title={hasAsset ? "Portföyü Güncelle" : "Portföye Ekle"}
+              >
+                {hasAsset ? <Edit2 size={20} /> : <Plus size={20} />}
+              </button>
+              <button 
+                className={`watchlist-btn ${isWatched(dbKey) ? 'active' : ''}`}
+                onClick={(e) => handleWatchlistToggle(e, dbKey)}
+                title={isWatched(dbKey) ? "Takipten Çıkar" : "Takibe Al"}
+              >
+                {isWatched(dbKey) ? <BookmarkCheck size={20} /> : <Bookmark size={20} />}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="app-container">
+      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+      {portfolioModalData && (
+        <PortfolioModal 
+          isOpen={true} 
+          onClose={() => setPortfolioModalData(null)} 
+          symbol={portfolioModalData.symbol} 
+          assetName={portfolioModalData.assetName} 
+          currentPriceUsd={portfolioModalData.currentPriceUsd}
+          usdTryRate={portfolioModalData.usdTryRate}
+          defaultTab={portfolioModalData.defaultTab}
+        />
+      )}
+      
+      <header className="glass-header">
+        <div className="header-content">
+          <div className="logo-section">
+            <div className="logo-icon-wrapper">
+              <Activity className="icon-pulse" size={28} color="#00ffcc" />
+            </div>
+            <h1>Finansal Duygu <span className="text-gradient">Motoru</span></h1>
+          </div>
+          
+          <div className="auth-section">
+            {user ? (
+              <>
+                <div className="user-email">
+                  <User size={16} /> {user.first_name ? `${user.first_name} ${user.last_name}` : user.email}
+                </div>
+                <button className="auth-btn" onClick={() => logout()}>
+                  <LogOut size={16} /> Çıkış
+                </button>
+              </>
+            ) : (
+              <button className="auth-btn login-btn" onClick={() => setIsLoginModalOpen(true)}>
+                <User size={16} /> Giriş Yap
+              </button>
+            )}
+            <button className="refresh-btn glow-effect" onClick={() => fetchData(false)} disabled={loading}>
+              <RefreshCw className={loading ? "spin" : ""} size={18} />
+              <span className="hide-mobile">Yenile</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="dashboard">
+        {user && portfolioReport && (
+          <div className="portfolio-banner glass-panel premium-border" style={{ marginBottom: '2rem', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(15, 23, 42, 0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: '600' }}>Toplam Varlığım</p>
+                <h2 style={{ fontSize: '3rem', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', textShadow: '0 0 20px rgba(96, 165, 250, 0.3)' }}>
+                  <DollarSign size={40} color="#60a5fa" />
+                  {portfolioReport.total_value_usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </h2>
+                <p style={{ color: '#4ade80', fontSize: '1.1rem', margin: '0.5rem 0 0 0', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span style={{opacity: 0.8}}>~ ₺</span>{(portfolioReport.total_value_usd * (market?.USD_TRY?.price || 1)).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </p>
+              </div>
+              <div style={{ padding: '1rem', background: 'rgba(96, 165, 250, 0.1)', borderRadius: '16px', border: '1px solid rgba(96, 165, 250, 0.2)' }}>
+                <Wallet size={48} color="#60a5fa" style={{ filter: 'drop-shadow(0 0 10px rgba(96, 165, 250, 0.5))' }} />
+              </div>
+            </div>
+            {portfolioReport.items && portfolioReport.items.length > 0 && (
+              <div className="portfolio-breakdown" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+                {portfolioReport.items.map(item => {
+                  const isGold = item.symbol === 'GOLD';
+                  const displaySymbol = isGold ? 'Altın (GOLD)' : item.symbol.replace('_', '/');
+                  
+                  return (
+                  <div key={item.symbol} className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative', transition: 'transform 0.2s', cursor: 'default' }} onMouseEnter={e => e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform='translateY(0)'}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {isGold ? <Coins size={16} color="#fbbf24" /> : <DollarSign size={16} color="#4ade80" />}
+                        <p style={{ margin: 0, color: '#e2e8f0', fontSize: '0.9rem', fontWeight: '600' }}>{displaySymbol}</p>
+                      </div>
+                      <button 
+                        onClick={() => removeFromPortfolio(item.symbol)} 
+                        title="Varlığı Sil" 
+                        style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0.2rem', transition: 'color 0.2s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <div>
+                      <h4 style={{ margin: '0.5rem 0 0 0', color: '#fff', fontSize: '1.4rem', fontWeight: '700' }}>
+                        {item.amount.toLocaleString('en-US', {maximumFractionDigits: isGold ? 4 : 2})} 
+                        <span style={{fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'normal', marginLeft: '4px'}}>{isGold ? 'ONS' : ''}</span>
+                      </h4>
+                      {isGold && (
+                        <p style={{ margin: '0.2rem 0 0 0', color: '#fbbf24', fontSize: '0.8rem' }}>
+                          ~ {(item.amount * 31.1034768).toLocaleString('en-US', {maximumFractionDigits: 2})} Gram
+                        </p>
+                      )}
+                    </div>
+                    <div style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <p style={{ margin: 0, color: '#4ade80', fontSize: '1rem', fontWeight: '600' }}>
+                        ${item.value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </p>
+                      {market?.USD_TRY?.price && (
+                        <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem' }}>
+                          ~ ₺{(item.value * market.USD_TRY.price).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )})}
+              </div>
+            )}
+            {portfolioReport.total_value_usd > 0 && (
+              <div className="risk-report glass-panel" style={{ marginTop: '0.5rem', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.3)', display: 'flex', gap: '1rem', alignItems: 'flex-start', background: 'linear-gradient(90deg, rgba(251, 191, 36, 0.05) 0%, transparent 100%)' }}>
+                <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '0.5rem', borderRadius: '8px' }}>
+                  <ShieldAlert size={24} color="#fbbf24" style={{ filter: 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.5))' }} />
+                </div>
+                <div>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#fbbf24', fontSize: '1rem', fontWeight: '600', letterSpacing: '0.5px' }}>Yapay Zeka Portföy Analizi</h4>
+                  <p style={{ margin: 0, color: '#cbd5e1', lineHeight: '1.6', fontSize: '0.95rem' }}>{portfolioReport.report_text}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Market Ticker Section */}
+        <div className="market-ticker glass-panel">
+          {renderTicker("USD_TRY", <DollarSign size={24} color="#4ade80" className="drop-shadow-green"/>, "USD/TRY", "₺", "GENERAL")}
+          {renderTicker("GOLD", <Coins size={24} color="#fbbf24" style={{filter: 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.4))'}}/>, "Altın (ONS)", "$", "GENERAL")}
+          {renderTicker("GRAM_GOLD", <Gem size={24} color="#fbbf24" style={{filter: 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.4))'}}/>, "Gram Altın", "₺", "GENERAL")}
+          {renderTicker("BTC", <Bitcoin size={24} color="#f7931a" style={{filter: 'drop-shadow(0 0 8px rgba(247, 147, 26, 0.4))'}}/>, "Bitcoin", "$", "CRYPTO")}
+          {renderTicker("BIST100", <LineChart size={24} color="#f87171" className="drop-shadow-red"/>, "BIST 100", "", "GENERAL")}
+        </div>
+
+        <div className="stats-row">
+          <div className="stat-card glass-panel premium-border">
+            <h3>Yapay Zeka Piyasa Beklentisi</h3>
+            <div className={`mood-score ${moodClass}`}>{marketMood}</div>
+            <p className="subtitle">Listelenen {news.length} habere göre</p>
+          </div>
+          
+          <div className="stat-card glass-panel flex-row">
+            <div className="stat-item hover-scale">
+              <TrendingUp color="#4ade80" size={32} className="drop-shadow-green"/>
+              <span className="stat-value text-green-400 glow-text-green">{positive}</span>
+              <span className="stat-label">Olumlu Sinyal</span>
+            </div>
+            <div className="stat-item hover-scale">
+              <TrendingDown color="#f87171" size={32} className="drop-shadow-red"/>
+              <span className="stat-value text-red-400 glow-text-red">{negative}</span>
+              <span className="stat-label">Olumsuz Sinyal</span>
+            </div>
+            <div className="stat-item hover-scale">
+              <Minus color="#60a5fa" size={32} className="drop-shadow-blue"/>
+              <span className="stat-value text-blue-400 glow-text-blue">{neutral}</span>
+              <span className="stat-label">Nötr</span>
+            </div>
+          </div>
+        </div>
+
+        <CorrelationChart />
+
+        <div className="section-header">
+          <h2 className="section-title">Canlı Haber Akışı ve NLP Analizi</h2>
+          
+          <div className="filters-container">
+            {user && (
+              <div 
+                className={`watchlist-toggle-wrapper ${showWatchlistOnly ? 'active' : ''}`}
+                onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
+              >
+                {showWatchlistOnly ? <BookmarkCheck size={16} color="#fbbf24" /> : <Bookmark size={16} color="#94a3b8" />}
+                <span style={{ color: showWatchlistOnly ? '#fbbf24' : '#94a3b8', fontSize: '0.9rem' }}>
+                  Sadece Takip Ettiklerim
+                </span>
+              </div>
+            )}
+            
+            <div className="filter-group">
+              <Filter size={16} color="#94a3b8" />
+              <select value={assetFilter} onChange={(e) => setAssetFilter(e.target.value)} className="glass-select" disabled={showWatchlistOnly}>
+                <option value="">Tüm Varlıklar</option>
+                <option value="GENERAL">Borsa & Ekonomi</option>
+                <option value="CRYPTO">Kripto Para</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <select value={sentimentFilter} onChange={(e) => setSentimentFilter(e.target.value)} className="glass-select">
+                <option value="">Tüm Sinyaller</option>
+                <option value="positive">Sadece Olumlu</option>
+                <option value="negative">Sadece Olumsuz</option>
+                <option value="neutral">Sadece Nötr</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        {error && <div className="error-box glass-panel">Bağlantı Hatası: {error}</div>}
+        
+        <div className="news-grid">
+          {loading && news.length === 0 ? (
+            <div className="loading-state">
+              <Activity className="spin" size={48} color="#00ffcc" />
+              <p>Yapay Zeka verileri derliyor, lütfen bekleyin...</p>
+            </div>
+          ) : news.length === 0 ? (
+            <div className="loading-state">
+              <p>{showWatchlistOnly && watchlists.length === 0 ? "Takip listeniz boş. Yukarıdan varlıkları takibe alabilirsiniz." : "Bu filtrelere uygun haber bulunamadı."}</p>
+            </div>
+          ) : (
+            news.map((item) => (
+              <a href={item.url} target="_blank" rel="noreferrer" key={item.id} className={`news-card glass-panel border-${item.sentiment_label}`}>
+                <div className="news-meta">
+                  <span className="source-tag">{item.source.toUpperCase()}</span>
+                  <span className="time-tag">{new Date(item.published_at).toLocaleTimeString('tr-TR')}</span>
+                  {user && (
+                    <button 
+                      className={`watchlist-btn ${isWatched(item.asset_type) ? 'active' : ''}`}
+                      onClick={(e) => handleWatchlistToggle(e, item.asset_type)}
+                      style={{ marginLeft: 'auto' }}
+                    >
+                      {isWatched(item.asset_type) ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                    </button>
+                  )}
+                </div>
+                <h3 className="news-title">{item.title}</h3>
+                <div className="news-footer">
+                  <span className={`sentiment-badge bg-${item.sentiment_label}`}>
+                    {item.sentiment_label === 'positive' && <TrendingUp size={14}/>}
+                    {item.sentiment_label === 'negative' && <TrendingDown size={14}/>}
+                    {item.sentiment_label === 'neutral' && <Minus size={14}/>}
+                    {item.sentiment_label.toUpperCase()}
+                  </span>
+                  <span className="score-text">AI Güven Skoru: <span className="font-bold">%{(item.sentiment_score * 100).toFixed(1)}</span></span>
+                </div>
+              </a>
+            ))
+          )}
+        </div>
+        
+        {!loading && hasMore && news.length > 0 && !showWatchlistOnly && (
+          <div className="load-more-container">
+            <button className="load-more-btn glow-effect" onClick={() => fetchData(true)} disabled={loadingMore}>
+              {loadingMore ? <Activity className="spin" size={18} /> : <span>Daha Fazla Yükle</span>}
+            </button>
+          </div>
+        )}
+      </main>
+
+      <ChatbotWidget />
+
+      <footer className="app-footer">
+        <p>Powered by <span className="author-name">Doğukan KILIÇ</span></p>
+      </footer>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <Dashboard />
+    </AuthProvider>
+  )
+}
+
+export default App
