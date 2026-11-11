@@ -13,7 +13,7 @@ const CorrelationChart = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`http://localhost:8000/api/correlation/${symbol}`);
+        const response = await fetch(`/api/correlation/${symbol}`);
         if (!response.ok) {
           throw new Error('Korelasyon verisi çekilemedi.');
         }
@@ -37,7 +37,7 @@ const CorrelationChart = () => {
           <p className="label" style={{ color: '#fff', marginBottom: '5px' }}>{`${label}`}</p>
           {payload.map((entry, index) => (
             <p key={`item-${index}`} style={{ color: entry.color, margin: 0, fontSize: '14px' }}>
-              {`${entry.name}: ${entry.name === 'Fiyat' ? '$' : ''}${Number(entry.value).toLocaleString('en-US', {maximumFractionDigits:2})}`}
+              {`${entry.name}: ${entry.name === 'Fiyat' ? (symbol === 'USD_TRY' ? '₺' : symbol === 'BIST100' ? '' : '$') : ''}${Number(entry.value).toLocaleString('en-US', {maximumFractionDigits:2})}`}
             </p>
           ))}
         </div>
@@ -51,7 +51,7 @@ const CorrelationChart = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Activity size={20} color="#00ffcc" />
-          Yapay Zeka Duygu & Fiyat Korelasyonu
+          Haber Duygusu ve Fiyat Karşılaştırması
         </h3>
         <select 
           value={symbol} 
@@ -69,7 +69,7 @@ const CorrelationChart = () => {
       {loading ? (
         <div className="loading-state" style={{ height: '300px' }}>
           <Activity className="spin" size={32} color="#00ffcc" />
-          <p>Korelasyon Modeli Yükleniyor...</p>
+          <p>Karşılaştırma verisi yükleniyor...</p>
         </div>
       ) : error ? (
         <div className="error-box glass-panel" style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

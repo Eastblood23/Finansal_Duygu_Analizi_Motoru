@@ -26,6 +26,7 @@ const PortfolioModal = ({ isOpen, onClose, symbol, assetName, currentPriceUsd, u
   const [inputType, setInputType] = useState(defaultTab); // 'amount', 'try' or 'gram'
   const [inputValue, setInputValue] = useState(getInitialValue());
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
@@ -51,18 +52,28 @@ const PortfolioModal = ({ isOpen, onClose, symbol, assetName, currentPriceUsd, u
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setError('');
     
     let finalAmount = parseFloat(inputValue);
+    if (!Number.isFinite(finalAmount) || finalAmount < 0 || (inputType === 'try' && !(priceInTry > 0))) {
+      setError('Geçerli bir miktar ve dönüşüm için güncel fiyat gereklidir.');
+      return;
+    }
     if (inputType === 'try') {
       finalAmount = finalAmount / priceInTry;
     } else if (inputType === 'gram') {
       finalAmount = finalAmount / 31.1034768;
     }
     
-    await setPortfolioItem(symbol, finalAmount);
+    if (!Number.isFinite(finalAmount)) {
+      setError('Miktar hesaplanamadı.');
+      return;
+    }
+    setLoading(true);
+    const saved = await setPortfolioItem(symbol, finalAmount);
     setLoading(false);
-    onClose();
+    if (saved) onClose();
+    else setError('Portföy kaydedilemedi. Lütfen tekrar deneyin.');
   };
 
   return (
@@ -77,6 +88,8 @@ const PortfolioModal = ({ isOpen, onClose, symbol, assetName, currentPriceUsd, u
         <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
           Cüzdanınızdaki <strong>{assetName}</strong> ({symbol}) miktarını giriniz.
         </p>
+        {symbol === 'GOLD' && <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Altın değeri vadeli kontrat fiyatıyla yaklaşık hesaplanır; fiziki altın alış/satış fiyatı değildir.</p>}
+        {error && <p role="alert" style={{ color: '#f87171' }}>{error}</p>}
 
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
           <button 
@@ -89,7 +102,7 @@ const PortfolioModal = ({ isOpen, onClose, symbol, assetName, currentPriceUsd, u
               color: inputType === 'amount' ? '#60a5fa' : '#94a3b8'
             }}
           >
-            Adet / ONS
+            {symbol === 'GOLD' ? 'Troy Ons' : symbol === 'USD_TRY' ? 'USD Miktarı' : 'BTC Miktarı'}
           </button>
           {symbol === 'GOLD' && (
             <button 

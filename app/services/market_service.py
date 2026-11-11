@@ -1,5 +1,6 @@
 import httpx
 import asyncio
+import math
 
 SYMBOLS = {
     "USD_TRY": "TRY=X",
@@ -24,12 +25,19 @@ async def fetch_ticker_data(symbol_key: str, yahoo_symbol: str) -> dict:
                 
         data = await asyncio.to_thread(fetch)
         meta = data["chart"]["result"][0]["meta"]
+        expected_currency = "TRY" if symbol_key in ("USD_TRY", "BIST100") else "USD"
+        if meta.get("currency") != expected_currency:
+            raise ValueError("Unexpected quote currency")
         
         price = meta.get("regularMarketPrice", 0.0)
-        prev_close = meta.get("chartPreviousClose", price)
+        if not isinstance(price, (int, float)) or not math.isfinite(price) or price <= 0:
+            raise ValueError("Invalid market price")
+        prev_close = meta.get("previousClose") or meta.get("regularMarketPreviousClose")
+        if not isinstance(prev_close, (int, float)) or not math.isfinite(prev_close) or prev_close <= 0:
+            prev_close = None
         
         # Değişim yüzdesi
-        change_pct = ((price - prev_close) / prev_close) * 100 if prev_close else 0.0
+        change_pct = ((price - prev_close) / prev_close) * 100 if prev_close else None
         
         # Son 30 günün kapanış fiyatları (grafik için)
         history = []
@@ -46,17 +54,23 @@ async def fetch_ticker_data(symbol_key: str, yahoo_symbol: str) -> dict:
         return {
             "symbol": symbol_key,
             "price": price,
+            "available": True,
+            "prev_close": prev_close,
+            "currency": meta.get("currency"),
             "change_pct": change_pct,
-            "is_up": change_pct >= 0,
+            "is_up": change_pct >= 0 if change_pct is not None else None,
             "history": history
         }
     except Exception as e:
             print(f"Piyasa verisi çekilemedi ({yahoo_symbol}): {e}")
             return {
                 "symbol": symbol_key,
-                "price": 0.0,
-                "change_pct": 0.0,
-                "is_up": True,
+                "price": None,
+                "available": False,
+                "prev_close": None,
+                "currency": None,
+                "change_pct": None,
+                "is_up": None,
                 "history": []
             }
 

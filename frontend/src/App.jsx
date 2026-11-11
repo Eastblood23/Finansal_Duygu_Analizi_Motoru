@@ -35,12 +35,12 @@ function Dashboard() {
       const currentOffset = isLoadMore ? offset + 50 : 0
       if (!isLoadMore) setOffset(0)
 
-      let newsUrl = `http://localhost:8000/api/sentiment/latest?limit=50&offset=${currentOffset}`
+      let newsUrl = `/api/sentiment/latest?limit=50&offset=${currentOffset}`
       if (assetFilter) newsUrl += `&asset_type=${assetFilter}`
       if (sentimentFilter) newsUrl += `&sentiment_label=${sentimentFilter}`
 
       const promises = [fetch(newsUrl)]
-      if (!isLoadMore) promises.push(fetch('http://localhost:8000/api/market/ticker'))
+      if (!isLoadMore) promises.push(fetch('/api/market/ticker'))
 
       const responses = await Promise.all(promises)
       const newsRes = responses[0]
@@ -85,26 +85,26 @@ function Dashboard() {
           const marketData = await marketRes.json()
           
           // Calculate Gram Gold dynamically
-          if (marketData && marketData.GOLD && marketData.USD_TRY) {
+          if (marketData?.GOLD?.price > 0 && marketData?.USD_TRY?.price > 0) {
             const goldOunce = marketData.GOLD.price;
             const usdTry = marketData.USD_TRY.price;
             const gramGold = (goldOunce / 31.1034768) * usdTry;
             
-            const goldPrev = marketData.GOLD.prev_close || goldOunce;
-            const usdPrev = marketData.USD_TRY.prev_close || usdTry;
-            const gramPrev = (goldPrev / 31.1034768) * usdPrev;
-            const gramChange = gramGold - gramPrev;
-            const gramChangePct = gramPrev ? (gramChange / gramPrev) * 100 : 0;
+            const goldPrev = marketData.GOLD.prev_close;
+            const usdPrev = marketData.USD_TRY.prev_close;
+            const gramPrev = goldPrev > 0 && usdPrev > 0 ? (goldPrev / 31.1034768) * usdPrev : null;
+            const gramChange = gramPrev != null ? gramGold - gramPrev : null;
+            const gramChangePct = gramPrev > 0 ? (gramChange / gramPrev) * 100 : null;
             
             marketData.GRAM_GOLD = {
               price: gramGold,
               prev_close: gramPrev,
               change: gramChange,
               change_pct: gramChangePct,
-              is_up: gramChange >= 0,
+              is_up: gramChange != null ? gramChange >= 0 : null,
               history: marketData.GOLD.history ? marketData.GOLD.history.map(h => ({
                 ...h,
-                value: (h.value / 31.1034768) * usdTry // Rough approximation for sparkline
+                price: (h.price / 31.1034768) * usdTry // Approximation using the current FX rate.
               })) : []
             };
           }
@@ -161,8 +161,10 @@ function Dashboard() {
   const renderTicker = (key, icon, label, prefix = "", assetType = "") => {
     if (!market || !market[key]) return null;
     const data = market[key];
+    const available = data.available !== false && Number.isFinite(data.price) && data.price > 0;
+    const hasChange = available && Number.isFinite(data.change_pct);
     const isUp = data.is_up;
-    const colorClass = isUp ? "text-green-400 glow-text-green" : "text-red-400 glow-text-red";
+    const colorClass = !hasChange ? "text-blue-400" : isUp ? "text-green-400 glow-text-green" : "text-red-400 glow-text-red";
     const Arrow = isUp ? "▲" : "▼";
     const formattedPrice = Number(data.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const formattedPct = Math.abs(data.change_pct).toFixed(2);
@@ -193,14 +195,15 @@ function Dashboard() {
           <div className="ticker-info" style={{ flexGrow: 1 }}>
             <span className="ticker-name">{label}</span>
             <div className="ticker-values">
-              <span className={`ticker-price ${colorClass}`}>{prefix}{formattedPrice}</span>
-              <span className={`ticker-pct ${colorClass}`}>{Arrow} %{formattedPct}</span>
+              <span className={`ticker-price ${colorClass}`}>{available ? `${prefix}${formattedPrice}` : 'Veri alınamadı'}</span>
+              <span className={`ticker-pct ${colorClass}`}>{hasChange ? `${Arrow} %${formattedPct}` : 'Değişim verisi yok'}</span>
             </div>
           </div>
           {assetType && (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button 
                 className="watchlist-btn"
+                disabled={dbKey === 'BIST100' || !available || !(market?.USD_TRY?.price > 0)}
                 onClick={() => user ? setPortfolioModalData({ 
                   symbol: dbKey, 
                   assetName: key === "GRAM_GOLD" ? "Altın (ONS / Gram)" : label,
@@ -208,7 +211,7 @@ function Dashboard() {
                   usdTryRate: market?.USD_TRY?.price || 1,
                   defaultTab: key === "GRAM_GOLD" ? "try" : "amount"
                 }) : setIsLoginModalOpen(true)}
-                title={hasAsset ? "Portföyü Güncelle" : "Portföye Ekle"}
+                title={dbKey === 'BIST100' ? 'Endeks doğrudan portföye eklenemez' : hasAsset ? "Portföyü Güncelle" : "Portföye Ekle"}
               >
                 {hasAsset ? <Edit2 size={20} /> : <Plus size={20} />}
               </button>
@@ -281,10 +284,10 @@ function Dashboard() {
                 <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: '600' }}>Toplam Varlığım</p>
                 <h2 style={{ fontSize: '3rem', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', textShadow: '0 0 20px rgba(96, 165, 250, 0.3)' }}>
                   <DollarSign size={40} color="#60a5fa" />
-                  {portfolioReport.total_value_usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  {portfolioReport.total_value_usd != null ? portfolioReport.total_value_usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'Hesaplanamadı'}
                 </h2>
                 <p style={{ color: '#4ade80', fontSize: '1.1rem', margin: '0.5rem 0 0 0', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span style={{opacity: 0.8}}>~ ₺</span>{(portfolioReport.total_value_usd * (market?.USD_TRY?.price || 1)).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  <span style={{opacity: 0.8}}>~ ₺</span>{portfolioReport.total_value_try != null ? portfolioReport.total_value_try.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'Hesaplanamadı'}
                 </p>
               </div>
               <div style={{ padding: '1rem', background: 'rgba(96, 165, 250, 0.1)', borderRadius: '16px', border: '1px solid rgba(96, 165, 250, 0.2)' }}>
@@ -327,11 +330,11 @@ function Dashboard() {
                     </div>
                     <div style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                       <p style={{ margin: 0, color: '#4ade80', fontSize: '1rem', fontWeight: '600' }}>
-                        ${item.value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        {item.value != null ? `$${item.value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : item.valuation_status === 'unsupported_asset' ? 'Değerleme desteklenmiyor' : 'Fiyat alınamadı'}
                       </p>
-                      {market?.USD_TRY?.price && (
+                      {item.value_try != null && (
                         <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem' }}>
-                          ~ ₺{(item.value * market.USD_TRY.price).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                          ~ ₺{item.value_try.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                         </p>
                       )}
                     </div>
@@ -339,13 +342,13 @@ function Dashboard() {
                 )})}
               </div>
             )}
-            {portfolioReport.total_value_usd > 0 && (
+            {portfolioReport.items?.length > 0 && (
               <div className="risk-report glass-panel" style={{ marginTop: '0.5rem', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.3)', display: 'flex', gap: '1rem', alignItems: 'flex-start', background: 'linear-gradient(90deg, rgba(251, 191, 36, 0.05) 0%, transparent 100%)' }}>
                 <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '0.5rem', borderRadius: '8px' }}>
                   <ShieldAlert size={24} color="#fbbf24" style={{ filter: 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.5))' }} />
                 </div>
                 <div>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#fbbf24', fontSize: '1rem', fontWeight: '600', letterSpacing: '0.5px' }}>Yapay Zeka Portföy Analizi</h4>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#fbbf24', fontSize: '1rem', fontWeight: '600', letterSpacing: '0.5px' }}>Portföy Haber Duygusu ve Değerleme</h4>
                   <p style={{ margin: 0, color: '#cbd5e1', lineHeight: '1.6', fontSize: '0.95rem' }}>{portfolioReport.report_text}</p>
                 </div>
               </div>

@@ -7,6 +7,9 @@ from app.limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+from sqlalchemy import text
+from fastapi.responses import JSONResponse
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,3 +56,17 @@ app.include_router(chatbot_routes.router, prefix="/api/chatbot", tags=["Chatbot"
 @app.get("/")
 async def root():
     return {"message": "Finansal Duygu Analizi Motoru çalışıyor. API dökümantasyonu için /docs sayfasına gidin."}
+
+
+@app.get("/api/health", include_in_schema=False)
+async def health():
+    async def check_dependencies():
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+        await redis_client.ping()
+
+    try:
+        await asyncio.wait_for(check_dependencies(), timeout=3)
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return {"status": "ok"}

@@ -39,7 +39,7 @@ const ChatbotWidget = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch('http://localhost:8000/api/chatbot/chat', {
+      const res = await fetch('/api/chatbot/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

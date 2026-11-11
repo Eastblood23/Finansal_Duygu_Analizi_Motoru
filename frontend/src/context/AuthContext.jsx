@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/auth/me', {
+      const response = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchWatchlists = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/watchlist/', {
+      const response = await fetch('/api/watchlist/', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchPortfolio = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/portfolio/', {
+      const response = await fetch('/api/portfolio/', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -71,7 +71,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchPortfolioReport = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/portfolio/report', {
+      const response = await fetch('/api/portfolio/report', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.ok) {
@@ -85,7 +85,7 @@ export const AuthProvider = ({ children }) => {
 
   const setPortfolioItem = async (symbol, amount) => {
     try {
-      const response = await fetch('http://localhost:8000/api/portfolio/', {
+      const response = await fetch('/api/portfolio/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -96,16 +96,19 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         await fetchPortfolio();
         await fetchPortfolioReport();
+        return true;
       }
+      return false;
     } catch (err) {
       console.error("Set portfolio error", err);
+      return false;
     }
   };
 
   const removeFromPortfolio = async (symbol) => {
     if (!token) return;
     try {
-      const response = await fetch(`http://localhost:8000/api/portfolio/${symbol}`, {
+      const response = await fetch(`/api/portfolio/${symbol}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`
@@ -126,7 +129,7 @@ export const AuthProvider = ({ children }) => {
       formData.append('username', email);
       formData.append('password', password);
 
-      const res = await fetch('http://localhost:8000/api/auth/login', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData
@@ -146,7 +149,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (email, password, firstName, lastName) => {
     try {
-      const res = await fetch('http://localhost:8000/api/auth/register', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, first_name: firstName, last_name: lastName })
@@ -167,7 +170,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const addToWatchlist = async (assetType) => {
-    const res = await fetch('http://localhost:8000/api/watchlist/', {
+    const res = await fetch('/api/watchlist/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -184,7 +187,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const removeFromWatchlist = async (id) => {
-    const res = await fetch(`http://localhost:8000/api/watchlist/${id}`, {
+    const res = await fetch(`/api/watchlist/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });

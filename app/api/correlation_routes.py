@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from app.services.sentiment_service import signed_sentiment_expression
 import asyncio
 
 from app.database import get_db
@@ -30,12 +31,12 @@ async def get_correlation_data(symbol: str, db: AsyncSession = Depends(get_db)):
     market_data = await fetch_ticker_data(symbol, yahoo_symbol)
     
     # 2. Fetch 30d daily sentiment average from Database
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     
     from sqlalchemy import text
     stmt = select(
         func.date_trunc('day', NewsItem.published_at).label('day'),
-        func.avg(NewsItem.sentiment_score).label('avg_score')
+        func.avg(signed_sentiment_expression()).label('avg_score')
     ).where(
         NewsItem.asset_type == asset_type,
         NewsItem.published_at >= thirty_days_ago
@@ -53,7 +54,7 @@ async def get_correlation_data(symbol: str, db: AsyncSession = Depends(get_db)):
     for row in sentiment_rows:
         day_str = row.day.strftime("%Y-%m-%d")
         # Ensure it's a float
-        sentiment_dict[day_str] = float(row.avg_score)
+        sentiment_dict[day_str] = float(row.avg_score) if row.avg_score is not None else None
         
     # 3. Merge data
     # market_data["history"] is [{"timestamp": ..., "price": ...}, ...]
@@ -66,7 +67,7 @@ async def get_correlation_data(symbol: str, db: AsyncSession = Depends(get_db)):
             "date": day_str,
             "timestamp": item["timestamp"],
             "price": item["price"],
-            "sentiment_score": sentiment_dict.get(day_str, 0.0) # Default to 0.0 if no news
+            "sentiment_score": sentiment_dict.get(day_str) # Missing news is not neutral sentiment.
         })
         
     return {

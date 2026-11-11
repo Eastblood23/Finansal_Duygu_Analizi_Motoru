@@ -4,7 +4,7 @@ sqlalchemy==2.0.25
 asyncpg==0.29.0
 alembic==1.13.1
 redis==5.0.1
-pydantic==2.6.1
+pydantic==2.12.5
 pydantic-settings==2.1.0
 httpx==0.26.0
 apscheduler==3.10.4
@@ -17,4 +17,4 @@ slowapi
 passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
-google-generativeai
+google-genai==3.1.0
