@@ -316,3 +316,21 @@
 .chatbot-disclaimer strong {
   color: #94a3b8;
 }
+
+@media (max-width: 768px) {
+  .chatbot-container { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); }
+  .chatbot-toggle-btn { width: 52px; height: 52px; }
+  .chatbot-window { width: min(350px, calc(100vw - 24px)); height: min(500px, calc(100dvh - 32px)); max-height: calc(100dvh - 32px); }
+  .chatbot-header { padding: 12px; flex-shrink: 0; gap: 8px; }
+  .chatbot-header-info, .chatbot-titles { min-width: 0; }
+  .chatbot-titles h4 { font-size: 1rem; }
+  .chatbot-status { letter-spacing: 0; overflow-wrap: anywhere; }
+  .chatbot-close-btn { min-width: 44px; min-height: 44px; }
+  .chatbot-messages { min-height: 0; padding: 12px; }
+  .chat-message { max-width: 100%; gap: 8px; }
+  .message-bubble { min-width: 0; padding: 10px 12px; }
+  .chatbot-input-area { padding: 10px; gap: 8px; flex-shrink: 0; }
+  .chatbot-input-area input { min-width: 0; width: 0; padding: 10px; font-size: 16px; }
+  .chatbot-send-btn { flex-shrink: 0; }
+  .chatbot-disclaimer { padding: 8px 10px; flex-shrink: 0; }
+}

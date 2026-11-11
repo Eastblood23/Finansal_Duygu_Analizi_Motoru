@@ -47,8 +47,8 @@ const CorrelationChart = () => {
   };
 
   return (
-    <div className="glass-panel" style={{ marginTop: '2rem', padding: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+    <div className="comparison-panel glass-panel" style={{ marginTop: '2rem', padding: '1.5rem' }}>
+      <div className="comparison-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Activity size={20} color="#00ffcc" />
           Haber Duygusu ve Fiyat Karşılaştırması
@@ -80,7 +80,7 @@ const CorrelationChart = () => {
           <p>Yeterli veri bulunamadı.</p>
         </div>
       ) : (
-        <div style={{ width: '100%', height: '350px' }}>
+        <div className="comparison-plot" style={{ width: '100%', height: '350px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data}

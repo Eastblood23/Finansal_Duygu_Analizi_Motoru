@@ -279,10 +279,10 @@ function Dashboard() {
       <main className="dashboard">
         {user && portfolioReport && (
           <div className="portfolio-banner glass-panel premium-border" style={{ marginBottom: '2rem', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(15, 23, 42, 0.6)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="portfolio-summary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: '600' }}>Toplam Varlığım</p>
-                <h2 style={{ fontSize: '3rem', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', textShadow: '0 0 20px rgba(96, 165, 250, 0.3)' }}>
+                <h2 className="portfolio-total" style={{ fontSize: '3rem', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', textShadow: '0 0 20px rgba(96, 165, 250, 0.3)' }}>
                   <DollarSign size={40} color="#60a5fa" />
                   {portfolioReport.total_value_usd != null ? portfolioReport.total_value_usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'Hesaplanamadı'}
                 </h2>
@@ -290,7 +290,7 @@ function Dashboard() {
                   <span style={{opacity: 0.8}}>~ ₺</span>{portfolioReport.total_value_try != null ? portfolioReport.total_value_try.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'Hesaplanamadı'}
                 </p>
               </div>
-              <div style={{ padding: '1rem', background: 'rgba(96, 165, 250, 0.1)', borderRadius: '16px', border: '1px solid rgba(96, 165, 250, 0.2)' }}>
+              <div className="portfolio-wallet" style={{ padding: '1rem', background: 'rgba(96, 165, 250, 0.1)', borderRadius: '16px', border: '1px solid rgba(96, 165, 250, 0.2)' }}>
                 <Wallet size={48} color="#60a5fa" style={{ filter: 'drop-shadow(0 0 10px rgba(96, 165, 250, 0.5))' }} />
               </div>
             </div>
@@ -301,7 +301,7 @@ function Dashboard() {
                   const displaySymbol = isGold ? 'Altın (GOLD)' : item.symbol.replace('_', '/');
                   
                   return (
-                  <div key={item.symbol} className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative', transition: 'transform 0.2s', cursor: 'default' }} onMouseEnter={e => e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform='translateY(0)'}>
+                  <div key={item.symbol} className="portfolio-item glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative', transition: 'transform 0.2s', cursor: 'default' }} onMouseEnter={e => e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform='translateY(0)'}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         {isGold ? <Coins size={16} color="#fbbf24" /> : <DollarSign size={16} color="#4ade80" />}

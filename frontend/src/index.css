@@ -737,3 +737,84 @@ body {
   box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
 }
 
+
+/* Mobile layout: desktop styles above remain unchanged. */
+@media (max-width: 768px) {
+  html, body, #root { width: 100%; min-width: 0; }
+  .app-container { width: 100%; padding: 12px; }
+  .glass-header { position: relative; margin: -12px -12px 20px; padding: 14px 12px; }
+  .header-content { flex-direction: column; align-items: stretch; gap: 14px; min-width: 0; }
+  .logo-section { min-width: 0; gap: 10px; }
+  .logo-section h1 { font-size: clamp(1.05rem, 4.5vw, 1.4rem); line-height: 1.25; }
+  .logo-icon-wrapper { flex-shrink: 0; padding: 6px; }
+  .auth-section { width: 100%; min-width: 0; gap: 8px; flex-wrap: wrap; }
+  .user-email { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
+  .auth-btn, .refresh-btn { min-height: 44px; padding: 10px 14px; justify-content: center; }
+  .auth-section > button { flex: 1; }
+  .dashboard, .dashboard > *, .stats-row > *, .news-grid > * { min-width: 0; max-width: 100%; }
+  .dashboard { gap: 18px; }
+  .portfolio-banner { padding: 16px !important; gap: 16px !important; margin-bottom: 0 !important; }
+  .portfolio-summary { gap: 8px; }
+  .portfolio-summary > div:first-child { min-width: 0; flex: 1; }
+  .portfolio-total { font-size: clamp(1.5rem, 7vw, 2.25rem) !important; overflow-wrap: anywhere; flex-wrap: wrap; }
+  .portfolio-total > svg { width: 24px; height: 24px; flex-shrink: 0; }
+  .portfolio-wallet { padding: 10px !important; flex-shrink: 0; }
+  .portfolio-wallet > svg { width: 28px; height: 28px; }
+  .portfolio-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .portfolio-item { min-width: 0; padding: 12px !important; overflow-wrap: anywhere; }
+  .portfolio-item > div:first-child { flex-wrap: wrap; gap: 4px; }
+  .portfolio-item > div:first-child > div { min-width: 0; gap: 4px !important; }
+  .portfolio-item button { min-width: 32px; min-height: 32px; }
+  .portfolio-item h4 { font-size: 1.15rem !important; }
+  .risk-report { padding: 12px !important; gap: 8px !important; flex-direction: column; }
+  .risk-report > div:first-child { display: none; }
+  .risk-report > div { min-width: 0; }
+  .risk-report h4 { line-height: 1.4; }
+  .risk-report p { font-size: 0.875rem !important; overflow-wrap: anywhere; }
+  .market-ticker { display: grid; grid-template-columns: minmax(0, 1fr); padding: 10px; gap: 10px; overflow: visible; }
+  .ticker-item { min-width: 0; width: 100%; padding: 12px; }
+  .ticker-content-wrapper { min-width: 0; gap: 8px; }
+  .ticker-content-wrapper > svg { flex-shrink: 0; width: 20px; }
+  .ticker-info { min-width: 0; flex: 1; }
+  .ticker-values { flex-wrap: wrap; gap: 4px 8px; }
+  .ticker-price { font-size: 1.15rem; overflow-wrap: anywhere; }
+  .ticker-pct { font-size: 0.75rem; }
+  .ticker-content-wrapper > div:last-child { gap: 0 !important; }
+  .watchlist-btn { min-width: 36px; min-height: 44px; justify-content: center; }
+  .stats-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .stat-card { padding: 18px; }
+  .mood-score { font-size: clamp(1.5rem, 7vw, 2.2rem); overflow-wrap: anywhere; }
+  .stat-item { min-width: 0; gap: 6px; }
+  .stat-value { font-size: 1.6rem; }
+  .stat-label { font-size: 0.75rem; text-align: center; }
+  .comparison-panel { padding: 12px !important; margin-top: 0 !important; }
+  .comparison-header { flex-direction: column; align-items: stretch !important; gap: 12px; }
+  .comparison-header h3 { font-size: 1rem !important; line-height: 1.5; }
+  .comparison-header h3 > svg { flex-shrink: 0; }
+  .comparison-header select { width: 100%; min-height: 44px; }
+  .comparison-plot { height: 280px !important; }
+  .section-header { flex-direction: column; align-items: stretch; margin-bottom: 0; }
+  .section-title { font-size: 1.15rem; line-height: 1.4; }
+  .filters-container { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .watchlist-toggle-wrapper { grid-column: 1 / -1; min-width: 0; min-height: 44px; }
+  .filter-group { min-width: 0; padding: 8px; }
+  .glass-select { min-width: 0; max-width: 100%; min-height: 36px; }
+  .filter-group select { width: 100%; }
+  .news-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .news-card { padding: 16px; }
+  .news-title { overflow-wrap: anywhere; font-size: 1rem; }
+  .news-meta { align-items: center; flex-wrap: wrap; gap: 8px; }
+  .news-footer { flex-wrap: wrap; gap: 10px; }
+  .score-text { font-size: 0.8rem; }
+  .loading-state { padding: 24px 12px; text-align: center; }
+  .modal-overlay { padding: 12px; }
+  .modal-content { width: 100%; padding: 24px 16px; max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .modal-content input, .modal-content select { font-size: 16px; }
+  .app-footer { margin-top: 24px; padding: 20px 0 80px; }
+}
+
+@media (max-width: 360px) {
+  .portfolio-breakdown { grid-template-columns: minmax(0, 1fr) !important; }
+  .portfolio-wallet { display: none; }
+  .filters-container { grid-template-columns: minmax(0, 1fr); }
+}
