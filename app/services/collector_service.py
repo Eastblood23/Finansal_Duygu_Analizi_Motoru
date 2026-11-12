@@ -1,5 +1,5 @@
 import asyncio
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import logging
 import httpx
 from datetime import datetime
 from time import mktime
@@ -10,8 +10,9 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import NewsItem
 from app.services.nlp_service import analyze_sentiment
+logger = logging.getLogger(__name__)
 
-scheduler = AsyncIOScheduler()
+
 
 def clean_html(raw_html):
     if not raw_html: return ""
@@ -24,7 +25,7 @@ async def fetch_finnhub_news():
         return []
         
     url = f"https://finnhub.io/api/v1/news?category=general&token={settings.finnhub_api_key}"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10) as client:
         try:
             response = await client.get(url)
             response.raise_for_status()
@@ -46,15 +47,19 @@ async def fetch_finnhub_news():
                 })
             return results
         except Exception as e:
-            print(f"Finnhub API hatası: {e}")
+            logger.warning("Finnhub fetch failed: %s", type(e).__name__)
             return []
 
 async def fetch_yahoo_finance_rss():
     """Yahoo Finance RSS akışını çeker"""
-    url = "https://finance.yahoo.com/news/rssindex"
+    url = "https://finance.yahoo.com/rss/2.0/headline?s=^GSPC,^DJI,^IXIC&region=US&lang=en-US"
     try:
         # feedparser is blocking, but it's fast. For best practice, we use to_thread.
-        feed = await asyncio.to_thread(feedparser.parse, url)
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True,
+                                     headers={"User-Agent": "Mozilla/5.0"}) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        feed = await asyncio.to_thread(feedparser.parse, response.content)
         results = []
         for entry in feed.entries[:15]:
             title = entry.title
@@ -77,14 +82,18 @@ async def fetch_yahoo_finance_rss():
             })
         return results
     except Exception as e:
-        print(f"Yahoo Finance RSS hatası: {e}")
+        logger.warning("Yahoo RSS fetch failed: %s", type(e).__name__)
         return []
 
 async def fetch_coindesk_rss():
     """CoinDesk Crypto RSS akışını çeker"""
     url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
     try:
-        feed = await asyncio.to_thread(feedparser.parse, url)
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True,
+                                     headers={"User-Agent": "Mozilla/5.0"}) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        feed = await asyncio.to_thread(feedparser.parse, response.content)
         results = []
         for entry in feed.entries[:10]:
             title = entry.title
@@ -106,79 +115,46 @@ async def fetch_coindesk_rss():
             })
         return results
     except Exception as e:
-        print(f"CoinDesk RSS hatası: {e}")
+        logger.warning("CoinDesk RSS fetch failed: %s", type(e).__name__)
         return []
 
 async def process_and_save_news():
-    """Haberleri çeker, analiz eder ve veritabanına kaydeder"""
-    print(f"Haber toplama işlemi başladı: {datetime.now()}")
-    
-    # Tüm kaynaklardan eşzamanlı veri çekme (Paralel)
-    finnhub_task = fetch_finnhub_news()
-    yahoo_task = fetch_yahoo_finance_rss()
-    crypto_task = fetch_coindesk_rss()
-    
-    results = await asyncio.gather(finnhub_task, yahoo_task, crypto_task)
-    
-    # Gelen iç içe listeyi tek listeye düzleştir
-    all_news = []
-    for source_data in results:
-        all_news.extend(source_data)
-        
-    if not all_news:
-        print("Hiç haber bulunamadı.")
-        return
-        
-    async with AsyncSessionLocal() as session:
-        from sqlalchemy import select
-        
-        saved_count = 0
-        for item in all_news:
-            url = item['url']
-            
-            # Bu haber daha önce eklendi mi?
-            existing = await session.execute(select(NewsItem).where(NewsItem.url == url))
-            if existing.scalar_one_or_none():
-                continue
-            
-            # NLP Duygu Analizi
-            sentiment_result = analyze_sentiment(item['content'])
-            label = sentiment_result['label']
-            score = sentiment_result['score']
-            
-            # Güvenlik Eşiği (Confidence Threshold) %70 altındaysa Nötr yap
-            if score < 0.70:
-                label = "neutral"
-                # Orijinal skoru tutabiliriz ama sistemin nötr algıladığını bilsin
-            
-            new_item = NewsItem(
-                source=item['source'],
-                asset_type=item['asset_type'],
-                title=item['title'][:250], # Güvenlik için kırp
-                content=item['content'],
-                url=url,
-                published_at=item['published_at'],
-                sentiment_label=label,
-                sentiment_score=score
-            )
-            session.add(new_item)
-            saved_count += 1
-            
-        await session.commit()
-    print(f"Haber toplama tamamlandı. {saved_count} yeni haber eklendi.")
-
-async def start_collector():
-    """Arka plan görevlendiricisini başlatır"""
-    asyncio.create_task(process_and_save_news())
-    
-    scheduler.add_job(
-        process_and_save_news, 
-        'interval', 
-        minutes=settings.update_interval_minutes
-    )
-    scheduler.start()
-
-async def stop_collector():
-    """Arka plan görevlendiricisini durdurur"""
-    scheduler.shutdown()
-
+    """One collector at a time; model execution is confined to the worker process."""
+    from sqlalchemy import select, text
+    from sqlalchemy.dialects.postgresql import insert
+    from redis.exceptions import RedisError
+    from app.database import engine, redis_client
+    logger = logging.getLogger(__name__)
+    async with engine.connect() as lock_connection:
+        locked = (await lock_connection.execute(text("SELECT pg_try_advisory_lock(81820317)"))).scalar_one()
+        if not locked:
+            return 0
+        try:
+            results = await asyncio.gather(fetch_finnhub_news(), fetch_yahoo_finance_rss(), fetch_coindesk_rss())
+            unique = {item['url']: item for batch in results for item in batch if item.get('url')}
+            if not unique:
+                return 0
+            async with AsyncSessionLocal() as session:
+                existing = set((await session.execute(select(NewsItem.url).where(NewsItem.url.in_(unique)))).scalars().all())
+                rows = []
+                for url, item in unique.items():
+                    if url in existing:
+                        continue
+                    sentiment = await asyncio.to_thread(analyze_sentiment, item['content'])
+                    rows.append(dict(source=item['source'], asset_type=item['asset_type'],
+                        title=item['title'][:250], content=item['content'], url=url,
+                        published_at=item['published_at'],
+                        sentiment_label=sentiment['label'] if sentiment['score'] >= .70 else 'neutral',
+                        sentiment_score=sentiment['score']))
+                if not rows:
+                    return 0
+                await session.execute(insert(NewsItem).values(rows).on_conflict_do_nothing(index_elements=['url']))
+                await session.commit()
+            try:
+                await redis_client.incr('news:generation')
+            except RedisError:
+                logger.warning('News committed; cache invalidation unavailable (TTL will expire)')
+            logger.info('News batch committed: %s candidates', len(rows))
+            return len(rows)
+        finally:
+            await lock_connection.execute(text("SELECT pg_advisory_unlock(81820317)"))

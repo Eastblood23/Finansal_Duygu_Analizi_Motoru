@@ -23,8 +23,31 @@ services:
       timeout: 7s
       retries: 5
       start_period: 90s
+    restart: unless-stopped
+
+  worker:
+    build: .
+    container_name: finans_worker
+    command: ["python", "-m", "app.worker"]
+    stop_grace_period: 45s
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
+    depends_on:
+      api:
+        condition: service_healthy
     volumes:
       - hf_cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; from app.database import redis_client; assert asyncio.run(redis_client.exists('collector:heartbeat'))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     restart: unless-stopped
 
   frontend:

@@ -3,11 +3,14 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Dict, Any
-import json
 
-from app.database import get_db, redis_client
+from app.database import get_db
 from app.models import NewsItem
 from app.limiter import limiter
+from datetime import datetime
+from sqlalchemy import tuple_
+from app.services.news_summary_service import generation
+from app.services.cache_service import cached_json
 
 router = APIRouter()
 
@@ -19,47 +22,49 @@ async def get_latest_sentiment(
     offset: int = Query(0, ge=0),
     asset_type: Optional[str] = None,
     sentiment_label: Optional[str] = None,
+    before_time: Optional[datetime] = None,
+    before_id: Optional[int] = Query(None, ge=1),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Önce Redis önbelleğine bakar, yoksa veritabanından filtrelenmiş haberleri getirir.
     """
-    cache_key = f"latest_sentiment_{limit}_{offset}_{asset_type}_{sentiment_label}"
-    
-    # 1. Önbelleği kontrol et
-    cached_data = await redis_client.get(cache_key)
-    if cached_data:
-        return json.loads(cached_data)
-        
-    # 2. Veritabanından çek
-    query = select(NewsItem)
-    if asset_type:
-        query = query.where(NewsItem.asset_type == asset_type)
-    if sentiment_label:
-        query = query.where(NewsItem.sentiment_label == sentiment_label)
-        
-    query = query.order_by(NewsItem.published_at.desc()).offset(offset).limit(limit)
-    result = await db.execute(query)
-    news_items = result.scalars().all()
-    
-    response_data = []
-    for item in news_items:
-        response_data.append({
-            "id": item.id,
-            "source": item.source,
-            "asset_type": item.asset_type,
-            "title": item.title,
-            "url": item.url,
-            "published_at": item.published_at.isoformat() if item.published_at else None,
-            "sentiment_label": item.sentiment_label,
-            "sentiment_score": item.sentiment_score
-        })
-        
-    # 3. Önbelleğe yaz (60 saniye boyunca geçerli olsun)
-    if response_data:
-        await redis_client.setex(cache_key, 60, json.dumps(response_data))
-        
-    return response_data
+    if (before_time is None) != (before_id is None) or (before_time is not None and offset):
+        raise HTTPException(status_code=400, detail="Sayfalama için tarih ve kimlik birlikte, offset olmadan verilmelidir.")
+    cache_key = f"latest_sentiment_v2_{await generation()}_{limit}_{offset}_{asset_type}_{sentiment_label}_{before_time}_{before_id}"
+
+    async def load_news():
+        # 2. Veritabanından çek
+        query = select(NewsItem)
+        if asset_type:
+            query = query.where(NewsItem.asset_type == asset_type)
+        if sentiment_label:
+            query = query.where(NewsItem.sentiment_label == sentiment_label)
+        if before_time is not None:
+            query = query.where(tuple_(NewsItem.published_at, NewsItem.id) < tuple_(before_time, before_id))
+
+        page = query.with_only_columns(NewsItem.id).order_by(
+            NewsItem.published_at.desc(), NewsItem.id.desc()).offset(offset).limit(limit).subquery()
+        query = select(NewsItem).join(page, NewsItem.id == page.c.id).order_by(
+            NewsItem.published_at.desc(), NewsItem.id.desc())
+        result = await db.execute(query)
+        news_items = result.scalars().all()
+
+        response_data = []
+        for item in news_items:
+            response_data.append({
+                "id": item.id,
+                "source": item.source,
+                "asset_type": item.asset_type,
+                "title": item.title,
+                "url": item.url,
+                "published_at": item.published_at.isoformat() if item.published_at else None,
+                "sentiment_label": item.sentiment_label,
+                "sentiment_score": item.sentiment_score
+            })
+        return response_data
+
+    return await cached_json(cache_key, load_news, ttl=60)
 
 from app.services.market_service import get_all_market_data
 
@@ -67,18 +72,4 @@ from app.services.market_service import get_all_market_data
 @limiter.limit("30/minute")
 async def get_market_ticker(request: Request):
     """Yahoo Finance üzerinden canlı piyasa verilerini döndürür (60 sn önbellekli)"""
-    cache_key = "market_ticker_data"
-    
-    # 1. Önbelleği kontrol et
-    cached_data = await redis_client.get(cache_key)
-    if cached_data:
-        return json.loads(cached_data)
-        
-    # 2. Önbellek boşsa canlı veri çek
-    data = await get_all_market_data()
-    
-    # 3. 60 saniye boyunca önbellekte tut
-    if data:
-        await redis_client.setex(cache_key, 60, json.dumps(data))
-        
-    return data
+    return await get_all_market_data()

@@ -1,6 +1,6 @@
-import httpx
 import asyncio
 import math
+from app.services.cache_service import cached_json
 
 SYMBOLS = {
     "USD_TRY": "TRY=X",
@@ -46,7 +46,7 @@ async def fetch_ticker_data(symbol_key: str, yahoo_symbol: str) -> dict:
             timestamps = data["chart"]["result"][0]["timestamp"]
             # Sadece None olmayan değerleri al
             for t, c in zip(timestamps, closes):
-                if c is not None:
+                if isinstance(c, (int, float)) and math.isfinite(c) and c > 0:
                     history.append({"timestamp": t, "price": c})
         except (KeyError, IndexError, TypeError):
             pass
@@ -74,9 +74,14 @@ async def fetch_ticker_data(symbol_key: str, yahoo_symbol: str) -> dict:
                 "history": []
             }
 
-async def get_all_market_data():
+async def _fetch_all_market_data():
     tasks = [fetch_ticker_data(key, sym) for key, sym in SYMBOLS.items()]
     results = await asyncio.gather(*tasks)
     
     # Listeyi dictionary'ye çevir
     return {item["symbol"]: item for item in results}
+
+
+async def get_all_market_data():
+    # Shared by ticker, portfolio and charts; one refresh across API processes.
+    return await cached_json("market:all:v2", _fetch_all_market_data, ttl=60)

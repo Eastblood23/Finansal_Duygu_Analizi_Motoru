@@ -36,6 +36,12 @@ function Dashboard() {
       if (!isLoadMore) setOffset(0)
 
       let newsUrl = `/api/sentiment/latest?limit=50&offset=${currentOffset}`
+      if (isLoadMore && news.length > 0) {
+        const last = news[news.length - 1];
+        if (last.published_at && last.id) {
+          newsUrl = `/api/sentiment/latest?limit=50&before_time=${encodeURIComponent(last.published_at)}&before_id=${last.id}`;
+        }
+      }
       if (assetFilter) newsUrl += `&asset_type=${assetFilter}`
       if (sentimentFilter) newsUrl += `&sentiment_label=${sentimentFilter}`
 

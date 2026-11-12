@@ -16,6 +16,7 @@ env
 postgres-data
 redis-data
 backups
+performance-results
 *.dump
 *.sql
 *.pem

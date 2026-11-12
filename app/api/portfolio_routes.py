@@ -1,16 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, delete
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
-from datetime import datetime, timedelta, timezone
+from typing import List
 
 from app.database import get_db
-from app.models import PortfolioItem, NewsItem
+from app.models import PortfolioItem
 from app.auth import get_current_user
 from app.services.market_service import get_all_market_data, SYMBOLS
 from app.services.portfolio_service import build_portfolio_report
-from app.services.sentiment_service import signed_sentiment_expression
+from app.services.news_summary_service import portfolio_sentiments
 
 router = APIRouter()
 
@@ -89,14 +88,5 @@ async def get_portfolio_report(current_user=Depends(get_current_user), db: Async
         return build_portfolio_report([], {}, {})
 
     market_data = await get_all_market_data()
-    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    sentiment_stmt = select(
-        NewsItem.asset_type,
-        func.avg(signed_sentiment_expression()).label("avg_score"),
-    ).where(NewsItem.published_at >= seven_days_ago).group_by(NewsItem.asset_type)
-    sent_result = await db.execute(sentiment_stmt)
-    sentiments = {
-        row.asset_type: float(row.avg_score)
-        for row in sent_result.all() if row.avg_score is not None
-    }
+    sentiments = await portfolio_sentiments(db)
     return build_portfolio_report(items, market_data, sentiments)

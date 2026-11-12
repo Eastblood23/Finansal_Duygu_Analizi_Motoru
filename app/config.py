@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
+    redis_timeout_seconds: float = Field(default=1, gt=0, le=10)
+    db_timeout_seconds: float = Field(default=3, gt=0, le=30)
+    request_timeout_seconds: float = Field(default=5, gt=0, le=60)
 
     # API Keys
     news_api_key: Optional[str] = None

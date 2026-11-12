@@ -1,0 +1,103 @@
+name: finans-performance
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: perf
+      POSTGRES_PASSWORD: disposable-performance-only
+      POSTGRES_DB: perf
+    tmpfs: [/var/lib/postgresql/data]
+    mem_limit: 768m
+    cpus: 1
+    healthcheck:
+      test: [CMD, pg_isready, -U, perf, -d, perf]
+      interval: 2s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    mem_limit: 128m
+    cpus: 0.5
+  api:
+    image: finansal_duygu_analizi_motoru-api
+    command: [python, /bench/server.py]
+    working_dir: /app
+    volumes:
+      - ../../app:/app/app:ro
+      - .:/bench:ro
+      - model_cache:/root/.cache/huggingface:ro
+    environment:
+      JWT_SECRET_KEY: isolated-performance-key-not-for-real-use-123456789
+      POSTGRES_USER: perf
+      POSTGRES_PASSWORD: disposable-performance-only
+      POSTGRES_DB: perf
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      DEBUG: 'false'
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      OMP_NUM_THREADS: '${PERF_CPUS:-2}'
+      MKL_NUM_THREADS: '${PERF_CPUS:-2}'
+      PERF_CPUS: '${PERF_CPUS:-2}'
+      PYTHONPATH: /app
+    cpus: '${PERF_CPUS:-2}'
+    mem_limit: '${PERF_MEMORY:-2g}'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  worker:
+    image: finansal_duygu_analizi_motoru-api
+    command: [python, /bench/worker.py]
+    working_dir: /app
+    volumes:
+      - ../../app:/app/app:ro
+      - .:/bench:ro
+      - model_cache:/root/.cache/huggingface:ro
+    environment:
+      JWT_SECRET_KEY: isolated-performance-key-not-for-real-use-123456789
+      POSTGRES_USER: perf
+      POSTGRES_PASSWORD: disposable-performance-only
+      POSTGRES_DB: perf
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      PYTHONPATH: /app
+    cpus: 1
+    mem_limit: 2g
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import asyncio; from app.database import redis_client; assert asyncio.run(redis_client.exists('collector:heartbeat'))"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  web:
+    image: finansal_duygu_analizi_motoru-frontend
+    cpus: 0.5
+    mem_limit: 128m
+    depends_on:
+      api:
+        condition: service_healthy
+  load:
+    image: finansal_duygu_analizi_motoru-api
+    working_dir: /bench
+    command: [python, /bench/load.py]
+    volumes:
+      - .:/bench:ro
+      - ../../performance-results:/results
+volumes:
+  model_cache:
+    external: true
+    name: finansal_duygu_analizi_motoru_hf_cache

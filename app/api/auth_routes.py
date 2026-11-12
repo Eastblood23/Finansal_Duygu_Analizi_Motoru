@@ -4,6 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import timedelta
 from pydantic import BaseModel
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+# Bound CPU bursts independently of the default network I/O thread pool.
+password_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="password")
 
 from app.database import get_db
 from app.models import User
@@ -39,7 +44,7 @@ async def register(request: Request, user: UserCreate, db: AsyncSession = Depend
     if existing_user:
         raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
         
-    hashed_password = get_password_hash(user.password)
+    hashed_password = await asyncio.get_running_loop().run_in_executor(password_pool, get_password_hash, user.password)
     new_user = User(email=user.email, hashed_password=hashed_password, first_name=user.first_name, last_name=user.last_name)
     db.add(new_user)
     await db.commit()
@@ -52,7 +57,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not await asyncio.get_running_loop().run_in_executor(password_pool, verify_password, form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-posta veya şifre hatalı",
