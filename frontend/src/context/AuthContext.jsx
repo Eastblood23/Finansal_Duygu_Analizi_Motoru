@@ -165,6 +165,30 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+      });
+      if (response.status === 204) {
+        localStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
+        setWatchlists([]);
+        setPortfolio([]);
+        setPortfolioReport(null);
+        return { ok: true };
+      }
+      if (response.status === 401) return { ok: false, error: 'Oturumunuz sona erdi. Yeniden giriş yapın.' };
+      if (response.status === 429) return { ok: false, error: 'Çok fazla deneme yaptınız. Lütfen daha sonra tekrar deneyin.' };
+      const data = await response.json().catch(() => ({}));
+      return { ok: false, error: typeof data.detail === 'string' ? data.detail : 'Şifre değiştirilemedi. Lütfen tekrar deneyin.' };
+    } catch {
+      return { ok: false, error: 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.' };
+    }
+  };
   const logout = () => {
     setToken(null);
   };
@@ -198,7 +222,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, watchlists, portfolio, portfolioReport, setPortfolioItem, removeFromPortfolio, login, register, logout, addToWatchlist, removeFromWatchlist }}>
+    <AuthContext.Provider value={{ user, token, watchlists, portfolio, portfolioReport, setPortfolioItem, removeFromPortfolio, login, register, changePassword, logout, addToWatchlist, removeFromWatchlist }}>
       {children}
     </AuthContext.Provider>
   );

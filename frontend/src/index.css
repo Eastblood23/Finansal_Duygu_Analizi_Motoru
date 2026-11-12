@@ -818,3 +818,7 @@ body {
   .portfolio-wallet { display: none; }
   .filters-container { grid-template-columns: minmax(0, 1fr); }
 }
+
+.password-help { color: #cbd5e1; font-size: .9rem; line-height: 1.5; margin-bottom: 16px; }
+.auth-notice { color: #4ade80; margin-bottom: 16px; }
+.submit-btn:disabled { opacity: .6; cursor: wait; }

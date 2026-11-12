@@ -17,6 +17,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 import hashlib
+import hmac
 import os
 
 def get_password_hash(password: str):
@@ -29,9 +30,14 @@ def verify_password(plain_password: str, hashed_password: str):
         salt_hex, hash_hex = hashed_password.split(":")
         salt = bytes.fromhex(salt_hex)
         pwd_hash = hashlib.pbkdf2_hmac('sha256', plain_password.encode('utf-8'), salt, 100000)
-        return pwd_hash.hex() == hash_hex
+        return hmac.compare_digest(pwd_hash.hex(), hash_hex)
     except Exception:
         return False
+
+
+def credential_stamp(hashed_password: str) -> str:
+    """Bind sessions to current credentials without exposing the stored hash."""
+    return hmac.new(SECRET_KEY.encode(), hashed_password.encode(), hashlib.sha256).hexdigest()
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -60,6 +66,9 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if user is None:
+        raise credentials_exception
+    stamp = payload.get("credential_stamp")
+    if not isinstance(stamp, str) or not hmac.compare_digest(stamp, credential_stamp(user.hashed_password)):
         raise credentials_exception
     request.state.authenticated_user_id = user.id
     return user

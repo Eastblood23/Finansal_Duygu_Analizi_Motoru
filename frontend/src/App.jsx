@@ -3,6 +3,7 @@ import { Activity, TrendingUp, TrendingDown, Minus, RefreshCw, DollarSign, Coins
 import { LineChart as RechartsLineChart, Line, ResponsiveContainer, YAxis } from 'recharts'
 import { AuthProvider, AuthContext } from './context/AuthContext'
 import LoginModal from './components/LoginModal'
+import ChangePasswordModal from './components/ChangePasswordModal'
 import CorrelationChart from './components/CorrelationChart'
 import ChatbotWidget from './components/ChatbotWidget'
 import PortfolioModal from './components/PortfolioModal'
@@ -16,6 +17,8 @@ function Dashboard() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(null)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [authNotice, setAuthNotice] = useState('')
   const [portfolioModalData, setPortfolioModalData] = useState(null)
   const { portfolioReport, portfolio, removeFromPortfolio } = useContext(AuthContext)
   
@@ -25,6 +28,10 @@ function Dashboard() {
   const [sentimentFilter, setSentimentFilter] = useState("")
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false)
   const [hasMore, setHasMore] = useState(true)
+
+  useEffect(() => {
+    if (user) setAuthNotice('')
+  }, [user])
 
   const fetchData = async (isLoadMore = false) => {
     if (isLoadMore) setLoadingMore(true)
@@ -238,6 +245,13 @@ function Dashboard() {
   return (
     <div className="app-container">
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+      {user && isPasswordModalOpen && (
+        <ChangePasswordModal onClose={() => setIsPasswordModalOpen(false)} onSuccess={() => {
+          setIsPasswordModalOpen(false)
+          setAuthNotice('Şifreniz değiştirildi. Yeni şifrenizle tekrar giriş yapın.')
+          setIsLoginModalOpen(true)
+        }} />
+      )}
       {portfolioModalData && (
         <PortfolioModal 
           isOpen={true} 
@@ -265,6 +279,7 @@ function Dashboard() {
                 <div className="user-email">
                   <User size={16} /> {user.first_name ? `${user.first_name} ${user.last_name}` : user.email}
                 </div>
+                <button className="auth-btn" onClick={() => setIsPasswordModalOpen(true)}>Şifre Değiştir</button>
                 <button className="auth-btn" onClick={() => logout()}>
                   <LogOut size={16} /> Çıkış
                 </button>
@@ -283,6 +298,7 @@ function Dashboard() {
       </header>
 
       <main className="dashboard">
+        {authNotice.trim() && <p className="auth-notice" role="status">{authNotice}</p>}
         {user && portfolioReport && (
           <div className="portfolio-banner glass-panel premium-border" style={{ marginBottom: '2rem', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'rgba(15, 23, 42, 0.6)' }}>
             <div className="portfolio-summary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
