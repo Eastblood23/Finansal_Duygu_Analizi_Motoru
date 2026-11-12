@@ -1,0 +1,152 @@
+# Standalone production definition. Do NOT merge with docker-compose.yml.
+# Coolify: Base Directory=/, Compose Location=/docker-compose.coolify.yml.
+# Assign a domain ONLY to frontend:80; no service publishes a host port.
+services:
+  api:
+    build: .
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment:
+      DEBUG: "false"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?}
+      POSTGRES_USER: ${POSTGRES_USER:-finans_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:-finans_db}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      REDIS_TIMEOUT_SECONDS: "1"
+      DB_TIMEOUT_SECONDS: "3"
+      REQUEST_TIMEOUT_SECONDS: "5"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+      GEMINI_TIMEOUT_SECONDS: "30"
+      GEMINI_MAX_OUTPUT_TOKENS: "2048"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
+      interval: 20s
+      timeout: 7s
+      retries: 5
+      start_period: 120s
+    cpus: 1
+    mem_limit: 1g
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DEBUG: "false"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?}
+      POSTGRES_USER: ${POSTGRES_USER:-finans_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:-finans_db}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      REDIS_TIMEOUT_SECONDS: "1"
+      DB_TIMEOUT_SECONDS: "3"
+      UPDATE_INTERVAL_MINUTES: ${UPDATE_INTERVAL_MINUTES:-15}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; from app.database import redis_client; assert asyncio.run(redis_client.exists('collector:heartbeat'))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    cpus: 1
+    mem_limit: 3g
+    stop_grace_period: 45s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NGINX_CONFIG: nginx.coolify.conf
+    expose:
+      - "80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    cpus: 0.5
+    mem_limit: 128m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-finans_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:-finans_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    cpus: 1
+    mem_limit: 1g
+    stop_grace_period: 60s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    cpus: 0.5
+    mem_limit: 512m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  redis_data:
+  hf_cache:
