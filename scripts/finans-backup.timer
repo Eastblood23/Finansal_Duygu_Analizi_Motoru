@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily verified database backup at 04:00 Europe/Istanbul
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 Europe/Istanbul
+RandomizedDelaySec=5min
+Persistent=true
+Unit=finans-backup.service
+
+[Install]
+WantedBy=timers.target

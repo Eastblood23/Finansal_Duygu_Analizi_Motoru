@@ -1,0 +1,6 @@
+# Install as /etc/finans-backup.conf, root:root, chmod 600.
+# Copy the Coolify application's resource ID, not the project or environment ID.
+APP_RESOURCE_ID=REPLACE_WITH_COOLIFY_APPLICATION_ID
+BACKUP_ROOT=/var/backups/finans
+RCLONE_CONFIG=/root/.config/rclone/rclone.conf
+B2_BUCKET=finans-b2:finansduygu-backups-dogu1391
