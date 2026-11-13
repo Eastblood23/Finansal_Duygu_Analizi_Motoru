@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.routing import APIRoute
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
+from sqlalchemy.exc import IntegrityError
 from datetime import timedelta
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, EmailStr, Field
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,15 +17,38 @@ password_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="password")
 from app.database import get_db
 from app.models import User
 from app.limiter import limiter, authenticated_user_key
+from app.services.registration_service import begin_registration, consume_registration, require_sender
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user, credential_stamp, ACCESS_TOKEN_EXPIRE_MINUTES
 
-router = APIRouter()
+class PrivateValidationRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+        async def safe_handler(request):
+            try:
+                return await handler(request)
+            except RequestValidationError as error:
+                # Pydantic errors can include submitted passwords in their input field.
+                return JSONResponse(status_code=422, content={"detail": [
+                    {"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]}
+                    for item in error.errors()]})
+        return safe_handler
+
+
+router = APIRouter(route_class=PrivateValidationRoute)
 
 class UserCreate(BaseModel):
-    email: str
-    password: str
-    first_name: str = None
-    last_name: str = None
+    email: EmailStr
+    password: SecretStr
+    first_name: str | None = Field(default=None, max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
+
+class RegistrationChallenge(BaseModel):
+    challenge_id: str
+    expires_in: int
+
+class EmailVerification(BaseModel):
+    challenge_id: str = Field(pattern=r"^[A-Za-z0-9_-]{43}$")
+    code: str = Field(pattern=r"^[0-9]{6}$")
 
 class Token(BaseModel):
     access_token: str
@@ -40,25 +67,50 @@ class PasswordChange(BaseModel):
     current_password: SecretStr
     new_password: SecretStr
 
-@router.post("/register", response_model=UserResponse)
-@limiter.limit("5/hour")
+@router.post("/register", response_model=RegistrationChallenge, status_code=202)
+@limiter.limit("5/hour;2/minute")
 async def register(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == user.email))
+    require_sender()
+    password = user.password.get_secret_value()
+    if not 15 <= len(password) <= 128:
+        raise HTTPException(400, "Şifre 15–128 karakter olmalı.")
+    email = str(user.email).lower()
+    result = await db.execute(select(User).where(func.lower(User.email) == email).limit(1))
     existing_user = result.scalar_one_or_none()
     if existing_user:
         raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
         
-    hashed_password = await asyncio.get_running_loop().run_in_executor(password_pool, get_password_hash, user.password)
-    new_user = User(email=user.email, hashed_password=hashed_password, first_name=user.first_name, last_name=user.last_name)
+    hashed_password = await asyncio.get_running_loop().run_in_executor(password_pool, get_password_hash, password)
+    return await begin_registration(dict(email=email, hashed_password=hashed_password,
+                                         first_name=user.first_name, last_name=user.last_name))
+
+
+@router.post("/verify-email", response_model=Token)
+@limiter.limit("10/minute;50/hour")
+async def verify_email(request: Request, verification: EmailVerification, db: AsyncSession = Depends(get_db)):
+    pending = await consume_registration(verification.challenge_id, verification.code)
+    new_user = User(**pending)
     db.add(new_user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "Bu e-posta zaten kayıtlı. Giriş yapabilirsiniz.") from None
     await db.refresh(new_user)
-    return new_user
+    return token_for(new_user)
+
+
+def token_for(user):
+    access_token = create_access_token(
+        data={"sub": user.email, "credential_stamp": credential_stamp(user.hashed_password)},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    return {"access_token": access_token, "token_type": "bearer", "email": user.email,
+            "first_name": user.first_name, "last_name": user.last_name}
 
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute;100/hour")
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == form_data.username))
+    result = await db.execute(select(User).where(func.lower(User.email) == form_data.username.strip().lower()).limit(1))
     user = result.scalar_one_or_none()
     
     if not user or not await asyncio.get_running_loop().run_in_executor(password_pool, verify_password, form_data.password, user.hashed_password):
@@ -68,11 +120,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email, "credential_stamp": credential_stamp(user.hashed_password)}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer", "email": user.email, "first_name": user.first_name, "last_name": user.last_name}
+    return token_for(user)
 
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_user)):

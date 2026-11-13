@@ -698,10 +698,17 @@ body {
   font-size: 0.9rem;
 }
 
-.modal-toggle-text span {
+.modal-toggle-text span, .modal-toggle-text button {
   color: #00ffcc;
   cursor: pointer;
   text-decoration: underline;
+}
+
+.modal-toggle-text button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
 }
 
 .watchlist-btn {

@@ -1,0 +1,45 @@
+# Isolated local tests: no published ports and no production volumes or credentials.
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: isolated-test-password
+      POSTGRES_DB: verification_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d verification_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  tests:
+    build:
+      context: ..
+      dockerfile: tests/email-verification.Dockerfile
+    working_dir: /app
+    volumes:
+      - ..:/app:ro
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      JWT_SECRET_KEY: isolated-test-secret-never-use-in-production-123456
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: isolated-test-password
+      POSTGRES_DB: verification_test
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: smtp.example.invalid
+      SMTP_USERNAME: test@example.com
+      SMTP_PASSWORD: isolated-test-password
+      SMTP_FROM_EMAIL: test@example.com
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*verification.py", "-v"]

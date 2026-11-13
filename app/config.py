@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import Field, SecretStr, field_validator
 from sqlalchemy.engine import URL
 
@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     redis_timeout_seconds: float = Field(default=1, gt=0, le=10)
     db_timeout_seconds: float = Field(default=3, gt=0, le=30)
     request_timeout_seconds: float = Field(default=5, gt=0, le=60)
+
+    # Registration fails closed until the sender is configured. Existing logins are unaffected.
+    smtp_host: str = ""
+    smtp_port: int = Field(default=465, ge=1, le=65535)
+    smtp_security: Literal["ssl", "starttls"] = "ssl"
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from_email: str = ""
 
     # API Keys
     news_api_key: Optional[str] = None

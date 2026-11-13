@@ -156,12 +156,30 @@ export const AuthProvider = ({ children }) => {
       });
       
       if (res.ok) {
-        return await login(email, password);
+        return { ok: true, ...(await res.json()) };
       }
-      return false;
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: typeof data.detail === 'string' ? data.detail : 'Kayıt başlatılamadı. Bilgilerinizi kontrol edin.' };
     } catch (err) {
-      console.error("Register fetch error:", err);
-      return false;
+      return { ok: false, error: 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.' };
+    }
+  };
+
+  const verifyRegistration = async (challengeId, code) => {
+    try {
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challenge_id: challengeId, code })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setToken(data.access_token);
+        return { ok: true };
+      }
+      return { ok: false, error: typeof data.detail === 'string' ? data.detail : 'Kod doğrulanamadı. Tekrar deneyin.' };
+    } catch {
+      return { ok: false, error: 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.' };
     }
   };
 
@@ -222,7 +240,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, watchlists, portfolio, portfolioReport, setPortfolioItem, removeFromPortfolio, login, register, changePassword, logout, addToWatchlist, removeFromWatchlist }}>
+    <AuthContext.Provider value={{ user, token, watchlists, portfolio, portfolioReport, setPortfolioItem, removeFromPortfolio, login, register, verifyRegistration, changePassword, logout, addToWatchlist, removeFromWatchlist }}>
       {children}
     </AuthContext.Provider>
   );

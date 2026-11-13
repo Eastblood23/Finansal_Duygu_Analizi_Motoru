@@ -18,7 +18,9 @@ class RequestDeadlineMiddleware:
             return await self.app(scope, receive, send)
         path = scope["path"]
         timeout = settings.request_timeout_seconds
-        if path.startswith("/api/chatbot/"):
+        if path == "/api/auth/register":
+            timeout = max(timeout, 40)
+        elif path.startswith("/api/chatbot/"):
             timeout = settings.gemini_timeout_seconds + 5
         elif path.startswith(("/api/market/", "/api/portfolio/", "/api/correlation/")):
             timeout = max(timeout, 10)

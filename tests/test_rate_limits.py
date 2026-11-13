@@ -77,19 +77,20 @@ class RateLimitTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(response.status_code, 429)
 
-    async def test_registration_blocks_sixth_request_before_database_work(self):
+    async def test_registration_blocks_third_request_before_database_work(self):
         self.db.execute.return_value.scalar_one_or_none.return_value = object()
-        async with self.client() as client:
-            for _ in range(5):
+        with patch.object(auth_routes, "require_sender"):
+            async with self.client() as client:
+                for _ in range(2):
+                    response = await client.post(
+                        "/api/auth/register", json={"email": "existing@example.com", "password": "valid-test-password"}
+                    )
+                    self.assertEqual(response.status_code, 400)
                 response = await client.post(
-                    "/api/auth/register", json={"email": "existing@example.invalid", "password": "invalid"}
+                    "/api/auth/register", json={"email": "existing@example.com", "password": "valid-test-password"}
                 )
-                self.assertEqual(response.status_code, 400)
-            response = await client.post(
-                "/api/auth/register", json={"email": "existing@example.invalid", "password": "invalid"}
-            )
-            self.assertEqual(response.status_code, 429)
-        self.assertEqual(self.db.execute.await_count, 5)
+                self.assertEqual(response.status_code, 429)
+        self.assertEqual(self.db.execute.await_count, 2)
 
     async def test_successful_login_and_authenticated_profile_remain_compatible(self):
         user = SimpleNamespace(
