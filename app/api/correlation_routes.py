@@ -13,6 +13,7 @@ ASSET_TYPE_MAP = {
     "BTC": "CRYPTO",
     "GOLD": "GENERAL",
     "USD_TRY": "GENERAL",
+    "EUR_TRY": "GENERAL",
     "BIST100": "GENERAL"
 }
 

@@ -84,7 +84,6 @@ const ChatbotWidget = () => {
             <Bot size={24} color="#60a5fa" className="drop-shadow-blue" />
             <div className="chatbot-titles">
               <h4>Portföy Asistanı</h4>
-              <span className="chatbot-status">Yapay Zeka (Gemini RAG) ile Canlı</span>
             </div>
           </div>
           <button className="chatbot-close-btn" onClick={toggleChat}>

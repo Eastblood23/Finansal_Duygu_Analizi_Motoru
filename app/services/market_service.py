@@ -4,6 +4,7 @@ from app.services.cache_service import cached_json
 
 SYMBOLS = {
     "USD_TRY": "TRY=X",
+    "EUR_TRY": "EURTRY=X",
     "GOLD": "GC=F",
     "BTC": "BTC-USD",
     "BIST100": "XU100.IS"
@@ -25,7 +26,7 @@ async def fetch_ticker_data(symbol_key: str, yahoo_symbol: str) -> dict:
                 
         data = await asyncio.to_thread(fetch)
         meta = data["chart"]["result"][0]["meta"]
-        expected_currency = "TRY" if symbol_key in ("USD_TRY", "BIST100") else "USD"
+        expected_currency = "TRY" if symbol_key in ("USD_TRY", "EUR_TRY", "BIST100") else "USD"
         if meta.get("currency") != expected_currency:
             raise ValueError("Unexpected quote currency")
         
@@ -84,4 +85,4 @@ async def _fetch_all_market_data():
 
 async def get_all_market_data():
     # Shared by ticker, portfolio and charts; one refresh across API processes.
-    return await cached_json("market:all:v2", _fetch_all_market_data, ttl=60)
+    return await cached_json("market:all:v3", _fetch_all_market_data, ttl=60)

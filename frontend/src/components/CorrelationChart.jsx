@@ -37,7 +37,7 @@ const CorrelationChart = () => {
           <p className="label" style={{ color: '#fff', marginBottom: '5px' }}>{`${label}`}</p>
           {payload.map((entry, index) => (
             <p key={`item-${index}`} style={{ color: entry.color, margin: 0, fontSize: '14px' }}>
-              {`${entry.name}: ${entry.name === 'Fiyat' ? (symbol === 'USD_TRY' ? '₺' : symbol === 'BIST100' ? '' : '$') : ''}${Number(entry.value).toLocaleString('en-US', {maximumFractionDigits:2})}`}
+              {`${entry.name}: ${entry.name === 'Fiyat' ? (['USD_TRY', 'EUR_TRY'].includes(symbol) ? '₺' : symbol === 'BIST100' ? '' : '$') : ''}${Number(entry.value).toLocaleString('en-US', {maximumFractionDigits:2})}`}
             </p>
           ))}
         </div>
@@ -63,6 +63,7 @@ const CorrelationChart = () => {
           <option value="BIST100">BIST 100 (Ekonomi)</option>
           <option value="GOLD">Altın ONS (Ekonomi)</option>
           <option value="USD_TRY">Dolar/TL (Ekonomi)</option>
+          <option value="EUR_TRY">Euro/TL (Ekonomi)</option>
         </select>
       </div>
 

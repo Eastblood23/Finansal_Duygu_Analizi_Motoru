@@ -106,7 +106,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const removeFromPortfolio = async (symbol) => {
-    if (!token) return;
+    if (!token) return false;
     try {
       const response = await fetch(`/api/portfolio/${symbol}`, {
         method: 'DELETE',
@@ -117,9 +117,12 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         await fetchPortfolio();
         await fetchPortfolioReport();
+        return true;
       }
+      return false;
     } catch (err) {
       console.error("Remove from portfolio error", err);
+      return false;
     }
   };
 

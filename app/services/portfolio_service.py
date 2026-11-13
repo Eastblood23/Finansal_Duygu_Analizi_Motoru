@@ -2,7 +2,7 @@
 from decimal import Decimal, InvalidOperation
 
 
-ASSET_TYPE_MAP = {"BTC": "CRYPTO", "GOLD": "GENERAL", "USD_TRY": "GENERAL"}
+ASSET_TYPE_MAP = {"BTC": "CRYPTO", "GOLD": "GENERAL", "USD_TRY": "GENERAL", "EUR_TRY": "GENERAL"}
 
 
 def nonnegative_decimal(value):
@@ -43,6 +43,11 @@ def build_portfolio_report(items, market, sentiments):
             value = amount  # Stored amount is USD, not the USD/TRY exchange rate.
         elif price is None:
             status = "price_unavailable"
+        elif symbol == "EUR_TRY":
+            if fx is None:
+                status = "price_unavailable"
+            else:
+                value = amount * price / fx  # EUR/TRY divided by USD/TRY gives EUR/USD.
         else:
             value = amount * price  # GOLD: troy ounces; BTC: coins; prices in USD.
         if value is None:
@@ -55,7 +60,7 @@ def build_portfolio_report(items, market, sentiments):
             "value": float(value) if value is not None else None,
             "value_try": float(value * fx) if value is not None and fx is not None else None,
             "asset_type": ASSET_TYPE_MAP.get(symbol), "valuation_status": status,
-            "amount_unit": {"USD_TRY": "USD", "GOLD": "troy_ounce", "BTC": "BTC"}.get(symbol),
+            "amount_unit": {"USD_TRY": "USD", "EUR_TRY": "EUR", "GOLD": "troy_ounce", "BTC": "BTC"}.get(symbol),
         })
         decimal_values.append(value)
 

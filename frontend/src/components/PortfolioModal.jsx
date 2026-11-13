@@ -1,192 +1,80 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { Wallet, X, Check, Trash2 } from 'lucide-react';
 
-const PortfolioModal = ({ isOpen, onClose, symbol, assetName, currentPriceUsd, usdTryRate, defaultTab = 'amount' }) => {
+const GRAMS_PER_OUNCE = 31.1034768;
+
+const PortfolioModal = ({ isOpen, onClose, symbol, assetName, currentPrice, usdTryRate, defaultTab = 'amount' }) => {
   const { setPortfolioItem, portfolio, removeFromPortfolio } = useContext(AuthContext);
-  
-  // Find current amount
   const currentItem = portfolio.find(p => p.symbol === symbol);
-  const currentAmount = currentItem ? currentItem.amount : 0;
-  
-  // Calculate asset price in TRY
-  const getAssetPriceInTry = () => {
-    if (symbol === 'USD_TRY' || symbol === 'USD/TRY') return currentPriceUsd;
-    return currentPriceUsd * usdTryRate;
-  };
-  const priceInTry = getAssetPriceInTry();
-
-  const getInitialValue = () => {
-    if (!currentAmount) return 0;
-    if (defaultTab === 'try') return (currentAmount * priceInTry).toFixed(2);
-    if (defaultTab === 'gram') return (currentAmount * 31.1034768).toFixed(6);
-    return currentAmount;
-  }
-
-  const [inputType, setInputType] = useState(defaultTab); // 'amount', 'try' or 'gram'
-  const [inputValue, setInputValue] = useState(getInitialValue());
+  const currentAmount = currentItem?.amount || 0;
+  const priceInTry = ['USD_TRY', 'EUR_TRY'].includes(symbol) ? currentPrice : currentPrice * usdTryRate;
+  const canConvert = Number.isFinite(priceInTry) && priceInTry > 0;
+  const initialType = defaultTab === 'try' && canConvert ? 'try' : 'amount';
+  const [inputType, setInputType] = useState(initialType);
+  const [inputValue, setInputValue] = useState(String(initialType === 'try' ? currentAmount * priceInTry : currentAmount));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
+  const busy = useRef(false);
+  const amountLabel = { GOLD: 'Troy Ons', USD_TRY: 'USD Miktarı', EUR_TRY: 'EUR Miktarı', BTC: 'BTC Miktarı' }[symbol] || 'Miktar';
   if (!isOpen) return null;
-
-  const handleToggle = (type) => {
-    if (type === inputType) return;
-    
-    let baseAmount = parseFloat(inputValue || 0);
-    if (inputType === 'try') {
-      baseAmount = baseAmount / priceInTry;
-    } else if (inputType === 'gram') {
-      baseAmount = baseAmount / 31.1034768;
-    }
-
-    if (type === 'try') {
-      setInputValue((baseAmount * priceInTry).toFixed(2));
-    } else if (type === 'gram') {
-      setInputValue((baseAmount * 31.1034768).toFixed(6));
-    } else {
-      setInputValue(baseAmount.toFixed(6));
-    }
+  const toAmount = (value, type) => type === 'try' ? value / priceInTry : type === 'gram' ? value / GRAMS_PER_OUNCE : value;
+  const toggle = type => {
+    if (busy.current || type === inputType || (type === 'try' && !canConvert)) return;
+    const amount = toAmount(Number(inputValue), inputType);
+    if (!Number.isFinite(amount) || amount < 0) return;
+    setInputValue(String(type === 'try' ? amount * priceInTry : type === 'gram' ? amount * GRAMS_PER_OUNCE : amount));
     setInputType(type);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
     setError('');
-    
-    let finalAmount = parseFloat(inputValue);
-    if (!Number.isFinite(finalAmount) || finalAmount < 0 || (inputType === 'try' && !(priceInTry > 0))) {
-      setError('Geçerli bir miktar ve dönüşüm için güncel fiyat gereklidir.');
-      return;
-    }
-    if (inputType === 'try') {
-      finalAmount = finalAmount / priceInTry;
-    } else if (inputType === 'gram') {
-      finalAmount = finalAmount / 31.1034768;
-    }
-    
-    if (!Number.isFinite(finalAmount)) {
-      setError('Miktar hesaplanamadı.');
-      return;
-    }
-    setLoading(true);
-    const saved = await setPortfolioItem(symbol, finalAmount);
-    setLoading(false);
-    if (saved) onClose();
-    else setError('Portföy kaydedilemedi. Lütfen tekrar deneyin.');
   };
-
+  const save = async (remove = false) => {
+    if (busy.current) return;
+    const amount = toAmount(Number(inputValue), inputType);
+    if (!remove && (!inputValue.trim() || !Number.isFinite(amount) || amount < 0 || amount > 1e15 || (inputType === 'try' && !canConvert))) {
+      setError('Geçerli bir miktar girin. TL dönüşümü için güncel fiyat gereklidir.');
+      return;
+    }
+    busy.current = true;
+    setLoading(true);
+    setError('');
+    try {
+      const saved = remove ? await removeFromPortfolio(symbol) : await setPortfolioItem(symbol, amount);
+      if (saved) onClose();
+      else setError('İşlem tamamlanamadı. Lütfen tekrar deneyin.');
+    } catch {
+      setError('İşlem tamamlanamadı. Lütfen tekrar deneyin.');
+    } finally {
+      busy.current = false;
+      setLoading(false);
+    }
+  };
+  const tab = (type, label, disabled = false) => (
+    <button type="button" disabled={loading || disabled} onClick={() => toggle(type)} aria-pressed={inputType === type}
+      style={{ flex: 1, padding: '0.6rem', borderRadius: '6px', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+        background: inputType === type ? 'rgba(96,165,250,0.2)' : 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: inputType === type ? '#60a5fa' : '#94a3b8' }}>{label}</button>
+  );
   return (
     <div className="modal-overlay">
-      <div className="modal-content glass-panel" style={{ maxWidth: '400px' }}>
-        <button className="modal-close" onClick={onClose}><X size={24} color="#94a3b8" /></button>
-        
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', color: '#fff' }}>
-          <Wallet size={24} color="#60a5fa" />
-          Portföye Ekle
-        </h2>
-        <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
-          Cüzdanınızdaki <strong>{assetName}</strong> ({symbol}) miktarını giriniz.
-        </p>
+      <div className="modal-content glass-panel" role="dialog" aria-modal="true" aria-labelledby="portfolio-modal-title" style={{ maxWidth: '400px' }}>
+        <button className="modal-close" disabled={loading} onClick={onClose} aria-label="Kapat"><X size={24} color="#94a3b8" /></button>
+        <h2 id="portfolio-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#fff' }}><Wallet size={24} color="#60a5fa" />{currentItem ? 'Varlığı Düzenle' : 'Portföye Ekle'}</h2>
+        <p style={{ color: '#94a3b8', marginBottom: '1rem' }}><strong>{assetName}</strong> için toplam miktarınızı girin. Kaydettiğiniz miktar önceki bakiyenin yerini alır.</p>
         {symbol === 'GOLD' && <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Altın değeri vadeli kontrat fiyatıyla yaklaşık hesaplanır; fiziki altın alış/satış fiyatı değildir.</p>}
+        {!canConvert && <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Güncel fiyat alınamadığı için TL dönüşümü kapalıdır. Miktarı düzenleyebilirsiniz.</p>}
         {error && <p role="alert" style={{ color: '#f87171' }}>{error}</p>}
-
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-          <button 
-            type="button"
-            onClick={() => handleToggle('amount')}
-            style={{ 
-              flex: 1, padding: '0.5rem', borderRadius: '4px', cursor: 'pointer',
-              background: inputType === 'amount' ? 'rgba(96, 165, 250, 0.2)' : 'transparent',
-              border: inputType === 'amount' ? '1px solid #60a5fa' : '1px solid rgba(255,255,255,0.1)',
-              color: inputType === 'amount' ? '#60a5fa' : '#94a3b8'
-            }}
-          >
-            {symbol === 'GOLD' ? 'Troy Ons' : symbol === 'USD_TRY' ? 'USD Miktarı' : 'BTC Miktarı'}
-          </button>
-          {symbol === 'GOLD' && (
-            <button 
-              type="button"
-              onClick={() => handleToggle('gram')}
-              style={{ 
-                flex: 1, padding: '0.5rem', borderRadius: '4px', cursor: 'pointer',
-                background: inputType === 'gram' ? 'rgba(251, 191, 36, 0.2)' : 'transparent',
-                border: inputType === 'gram' ? '1px solid #fbbf24' : '1px solid rgba(255,255,255,0.1)',
-                color: inputType === 'gram' ? '#fbbf24' : '#94a3b8'
-              }}
-            >
-              Adet / Gram
-            </button>
-          )}
-          <button 
-            type="button"
-            onClick={() => handleToggle('try')}
-            style={{ 
-              flex: 1, padding: '0.5rem', borderRadius: '4px', cursor: 'pointer',
-              background: inputType === 'try' ? 'rgba(74, 222, 128, 0.2)' : 'transparent',
-              border: inputType === 'try' ? '1px solid #4ade80' : '1px solid rgba(255,255,255,0.1)',
-              color: inputType === 'try' ? '#4ade80' : '#94a3b8'
-            }}
-          >
-            TL Karşılığı
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>{tab('amount', amountLabel)}{symbol === 'GOLD' && tab('gram', 'Gram')}{tab('try', 'TL Karşılığı', !canConvert)}</div>
+        <form onSubmit={e => { e.preventDefault(); save(); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div className="input-group">
-            <label style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>
-              {inputType === 'amount' ? 'Miktar' : inputType === 'gram' ? 'Gram Miktarı' : 'TL Değeri (₺)'}
-            </label>
-            <input 
-              type="number" 
-              step="any"
-              min="0"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              className="glass-input"
-              style={{ padding: '0.75rem', marginTop: '0.5rem', width: '100%' }}
-              required 
-            />
-            {inputType === 'try' && priceInTry && (
-               <small style={{ display: 'block', marginTop: '0.5rem', color: '#94a3b8' }}>
-                 Tahmini Adet: {(parseFloat(inputValue || 0) / priceInTry).toFixed(6)} {symbol}
-               </small>
-            )}
+            <label htmlFor="portfolio-amount" style={{ color: '#e2e8f0', fontSize: '0.9rem' }}>{inputType === 'try' ? 'TL Değeri (₺)' : inputType === 'gram' ? 'Gram Miktarı' : amountLabel}</label>
+            <input id="portfolio-amount" type="number" step="any" min="0" required disabled={loading} value={inputValue} onChange={e => setInputValue(e.target.value)} className="glass-input" style={{ padding: '0.75rem', marginTop: '0.5rem', width: '100%' }} />
           </div>
-
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            {currentAmount > 0 && (
-              <button 
-                type="button"
-                onClick={async () => {
-                  setLoading(true);
-                  await removeFromPortfolio(symbol);
-                  setLoading(false);
-                  onClose();
-                }}
-                disabled={loading}
-                title="Portföyden Çıkar"
-                style={{ flex: '0 0 auto', padding: '0.75rem', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'; e.currentTarget.style.transform = 'scale(1.05)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.transform = 'scale(1)' }}
-              >
-                <Trash2 size={20} />
-              </button>
-            )}
-            <button 
-              type="submit" 
-              className="auth-button" 
-              disabled={loading}
-              style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
-            >
-              {loading ? <div className="spinner" style={{ width: '20px', height: '20px' }}></div> : <Check size={20} />}
-              {loading ? 'Güncelleniyor...' : 'Bakiyeyi Kaydet'}
-            </button>
+            {currentItem && <button type="button" disabled={loading} onClick={() => save(true)} aria-label="Varlığı portföyden sil" style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={20} /></button>}
+            <button type="submit" className="auth-button" disabled={loading} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}><Check size={20} />{loading ? 'Kaydediliyor...' : 'Bakiyeyi Kaydet'}</button>
           </div>
         </form>
       </div>
     </div>
   );
 };
-
 export default PortfolioModal;

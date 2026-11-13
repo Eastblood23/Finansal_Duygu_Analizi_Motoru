@@ -17,6 +17,32 @@ def holding(symbol, amount):
 
 
 class PortfolioTests(unittest.TestCase):
+    def test_euro_uses_cross_rate_and_preserves_euro_units(self):
+        report = build_portfolio_report(
+            [holding("EUR_TRY", 100), holding("USD_TRY", 100)],
+            {"EUR_TRY": {"price": 48}, "USD_TRY": {"price": 40}},
+            {"GENERAL": 0.3},
+        )
+        self.assertEqual(report["total_value_usd"], 220)
+        self.assertEqual(report["total_value_try"], 8800)
+        euro = report["items"][0]
+        self.assertEqual(euro["value"], 120)
+        self.assertEqual(euro["value_try"], 4800)
+        self.assertEqual(euro["amount_unit"], "EUR")
+        self.assertEqual(euro["asset_type"], "GENERAL")
+
+    def test_euro_missing_quote_or_cross_rate_never_invents_value(self):
+        for market in (
+            {"USD_TRY": {"price": 40}},
+            {"EUR_TRY": {"price": 48}},
+            {"EUR_TRY": {"price": 48, "available": False}, "USD_TRY": {"price": 40}},
+        ):
+            with self.subTest(market=market):
+                report = build_portfolio_report([holding("EUR_TRY", 100)], market, {})
+                self.assertFalse(report["valuation_complete"])
+                self.assertIsNone(report["total_value_usd"])
+                self.assertIsNone(report["total_value_try"])
+
     def test_usd_btc_and_gold_use_existing_units_and_one_currency(self):
         report = build_portfolio_report(
             [holding("USD_TRY", 100), holding("BTC", 0.1), holding("GOLD", 2)],

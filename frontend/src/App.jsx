@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react'
-import { Activity, TrendingUp, TrendingDown, Minus, RefreshCw, DollarSign, Coins, Gem, LineChart, Filter, User, LogOut, Bookmark, BookmarkCheck, Bitcoin, Wallet, Plus, ShieldAlert, Edit2, Trash2 } from 'lucide-react'
+import { Activity, TrendingUp, TrendingDown, Minus, RefreshCw, DollarSign, Euro, Coins, Gem, LineChart, Filter, User, LogOut, Bookmark, BookmarkCheck, Bitcoin, Wallet, Plus, ShieldAlert, Edit2, Trash2 } from 'lucide-react'
 import { LineChart as RechartsLineChart, Line, ResponsiveContainer, YAxis } from 'recharts'
 import { AuthProvider, AuthContext } from './context/AuthContext'
 import LoginModal from './components/LoginModal'
@@ -10,7 +10,7 @@ import PortfolioModal from './components/PortfolioModal'
 
 function Dashboard() {
   const { user, watchlists, logout, addToWatchlist, removeFromWatchlist } = useContext(AuthContext)
-  
+
   const [news, setNews] = useState([])
   const [market, setMarket] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -21,7 +21,7 @@ function Dashboard() {
   const [authNotice, setAuthNotice] = useState('')
   const [portfolioModalData, setPortfolioModalData] = useState(null)
   const { portfolioReport, portfolio, removeFromPortfolio } = useContext(AuthContext)
-  
+
   // Filters and Pagination
   const [offset, setOffset] = useState(0)
   const [assetFilter, setAssetFilter] = useState("")
@@ -36,7 +36,7 @@ function Dashboard() {
   const fetchData = async (isLoadMore = false) => {
     if (isLoadMore) setLoadingMore(true)
     else setLoading(true)
-    
+
     setError(null)
     try {
       const currentOffset = isLoadMore ? offset + 50 : 0
@@ -58,9 +58,9 @@ function Dashboard() {
       const responses = await Promise.all(promises)
       const newsRes = responses[0]
       if (!newsRes.ok) throw new Error('Haber ağ hatası: ' + newsRes.status)
-      
+
       const newsData = await newsRes.json()
-      
+
       if (newsData.length < 50) setHasMore(false)
       else setHasMore(true)
 
@@ -68,9 +68,9 @@ function Dashboard() {
       // Eğer "Sadece Takip Ettiklerim" seçiliyse, frontend'de filtrele
       if (showWatchlistOnly && user && watchlists.length > 0) {
          const trackedAssets = watchlists.map(w => w.asset_type);
-         
+
          const impliedCategories = new Set(trackedAssets);
-         if (trackedAssets.includes("GOLD") || trackedAssets.includes("BIST100") || trackedAssets.includes("USD_TRY")) {
+         if (trackedAssets.includes("GOLD") || trackedAssets.includes("BIST100") || trackedAssets.includes("USD_TRY") || trackedAssets.includes("EUR_TRY")) {
             impliedCategories.add("GENERAL");
          }
          if (trackedAssets.includes("BTC")) {
@@ -96,19 +96,19 @@ function Dashboard() {
           const marketRes = responses[1]
           if (!marketRes.ok) throw new Error('Piyasa ağ hatası: ' + marketRes.status)
           const marketData = await marketRes.json()
-          
+
           // Calculate Gram Gold dynamically
           if (marketData?.GOLD?.price > 0 && marketData?.USD_TRY?.price > 0) {
             const goldOunce = marketData.GOLD.price;
             const usdTry = marketData.USD_TRY.price;
             const gramGold = (goldOunce / 31.1034768) * usdTry;
-            
+
             const goldPrev = marketData.GOLD.prev_close;
             const usdPrev = marketData.USD_TRY.prev_close;
             const gramPrev = goldPrev > 0 && usdPrev > 0 ? (goldPrev / 31.1034768) * usdPrev : null;
             const gramChange = gramPrev != null ? gramGold - gramPrev : null;
             const gramChangePct = gramPrev > 0 ? (gramChange / gramPrev) * 100 : null;
-            
+
             marketData.GRAM_GOLD = {
               price: gramGold,
               prev_close: gramPrev,
@@ -121,7 +121,7 @@ function Dashboard() {
               })) : []
             };
           }
-          
+
           setMarket(marketData)
         }
       }
@@ -146,11 +146,11 @@ function Dashboard() {
   const positive = news.filter(n => n.sentiment_label === 'positive').length
   const negative = news.filter(n => n.sentiment_label === 'negative').length
   const neutral = news.filter(n => n.sentiment_label === 'neutral').length
-  
+
   const score = (positive - negative) / total
   let marketMood = "Nötr (Durağan)"
   let moodClass = "text-blue-400"
-  
+
   if (score > 0.2) { marketMood = "Güçlü Boğa Piyasası"; moodClass = "text-green-400 glow-text-green" }
   else if (score < -0.2) { marketMood = "Riskli Ayı Piyasası"; moodClass = "text-red-400 glow-text-red" }
 
@@ -160,7 +160,7 @@ function Dashboard() {
       setIsLoginModalOpen(true);
       return;
     }
-    
+
     const existing = watchlists.find(w => w.asset_type === assetType);
     if (existing) {
       await removeFromWatchlist(existing.id);
@@ -170,6 +170,15 @@ function Dashboard() {
   };
 
   const isWatched = (assetType) => watchlists.some(w => w.asset_type === assetType);
+
+  const openPortfolioEditor = (symbol, assetName, defaultTab = 'amount') => {
+    if (!user) { setIsLoginModalOpen(true); return; }
+    const quote = market?.[symbol];
+    const fx = market?.USD_TRY;
+    setPortfolioModalData({ symbol, assetName, defaultTab,
+      currentPrice: quote?.available !== false && Number.isFinite(quote?.price) ? quote.price : 0,
+      usdTryRate: fx?.available !== false && Number.isFinite(fx?.price) ? fx.price : 0 });
+  };
 
   const renderTicker = (key, icon, label, prefix = "", assetType = "") => {
     if (!market || !market[key]) return null;
@@ -181,10 +190,10 @@ function Dashboard() {
     const Arrow = isUp ? "▲" : "▼";
     const formattedPrice = Number(data.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const formattedPct = Math.abs(data.change_pct).toFixed(2);
-    
-    const chartData = data.history ? data.history.map((val, idx) => ({ 
-      value: typeof val === 'object' && val !== null ? val.price : val, 
-      index: idx 
+
+    const chartData = data.history ? data.history.map((val, idx) => ({
+      value: typeof val === 'object' && val !== null ? val.price : val,
+      index: idx
     })) : [];
     const strokeColor = isUp ? "#4ade80" : "#f87171";
 
@@ -214,21 +223,15 @@ function Dashboard() {
           </div>
           {assetType && (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button 
+              <button
                 className="watchlist-btn"
-                disabled={dbKey === 'BIST100' || !available || !(market?.USD_TRY?.price > 0)}
-                onClick={() => user ? setPortfolioModalData({ 
-                  symbol: dbKey, 
-                  assetName: key === "GRAM_GOLD" ? "Altın (ONS / Gram)" : label,
-                  currentPriceUsd: market[dbKey]?.price || 0,
-                  usdTryRate: market?.USD_TRY?.price || 1,
-                  defaultTab: key === "GRAM_GOLD" ? "try" : "amount"
-                }) : setIsLoginModalOpen(true)}
+                disabled={dbKey === 'BIST100'}
+                onClick={() => openPortfolioEditor(dbKey, key === "GRAM_GOLD" ? "Altın (ONS / Gram)" : label, key === "GRAM_GOLD" ? "try" : "amount")}
                 title={dbKey === 'BIST100' ? 'Endeks doğrudan portföye eklenemez' : hasAsset ? "Portföyü Güncelle" : "Portföye Ekle"}
               >
                 {hasAsset ? <Edit2 size={20} /> : <Plus size={20} />}
               </button>
-              <button 
+              <button
                 className={`watchlist-btn ${isWatched(dbKey) ? 'active' : ''}`}
                 onClick={(e) => handleWatchlistToggle(e, dbKey)}
                 title={isWatched(dbKey) ? "Takipten Çıkar" : "Takibe Al"}
@@ -253,17 +256,17 @@ function Dashboard() {
         }} />
       )}
       {portfolioModalData && (
-        <PortfolioModal 
-          isOpen={true} 
-          onClose={() => setPortfolioModalData(null)} 
-          symbol={portfolioModalData.symbol} 
-          assetName={portfolioModalData.assetName} 
-          currentPriceUsd={portfolioModalData.currentPriceUsd}
+        <PortfolioModal
+          isOpen={true}
+          onClose={() => setPortfolioModalData(null)}
+          symbol={portfolioModalData.symbol}
+          assetName={portfolioModalData.assetName}
+          currentPrice={portfolioModalData.currentPrice}
           usdTryRate={portfolioModalData.usdTryRate}
           defaultTab={portfolioModalData.defaultTab}
         />
       )}
-      
+
       <header className="glass-header">
         <div className="header-content">
           <div className="logo-section">
@@ -272,7 +275,7 @@ function Dashboard() {
             </div>
             <h1>Finansal Duygu <span className="text-gradient">Motoru</span></h1>
           </div>
-          
+
           <div className="auth-section">
             {user ? (
               <>
@@ -321,28 +324,30 @@ function Dashboard() {
                 {portfolioReport.items.map(item => {
                   const isGold = item.symbol === 'GOLD';
                   const displaySymbol = isGold ? 'Altın (GOLD)' : item.symbol.replace('_', '/');
-                  
+
                   return (
                   <div key={item.symbol} className="portfolio-item glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem', position: 'relative', transition: 'transform 0.2s', cursor: 'default' }} onMouseEnter={e => e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform='translateY(0)'}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {isGold ? <Coins size={16} color="#fbbf24" /> : <DollarSign size={16} color="#4ade80" />}
+                        {isGold ? <Coins size={16} color="#fbbf24" /> : item.symbol === 'EUR_TRY' ? <Euro size={16} color="#60a5fa" /> : item.symbol === 'BTC' ? <Bitcoin size={16} /> : <DollarSign size={16} color="#4ade80" />}
                         <p style={{ margin: 0, color: '#e2e8f0', fontSize: '0.9rem', fontWeight: '600' }}>{displaySymbol}</p>
                       </div>
-                      <button 
-                        onClick={() => removeFromPortfolio(item.symbol)} 
-                        title="Varlığı Sil" 
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {['USD_TRY', 'EUR_TRY', 'GOLD', 'BTC'].includes(item.symbol) && <button type="button" onClick={() => openPortfolioEditor(item.symbol, displaySymbol)} title="Varlığı Düzenle" aria-label={displaySymbol + ' miktarını düzenle'} style={{ background: 'transparent', border: 'none', color: '#60a5fa', cursor: 'pointer', padding: '0.3rem' }}><Edit2 size={18} /></button>}
+                      <button
+                        onClick={() => removeFromPortfolio(item.symbol)}
+                        title="Varlığı Sil"
                         style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '0.2rem', transition: 'color 0.2s' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
                       >
                         <Trash2 size={16} />
-                      </button>
+                      </button></div>
                     </div>
                     <div>
                       <h4 style={{ margin: '0.5rem 0 0 0', color: '#fff', fontSize: '1.4rem', fontWeight: '700' }}>
-                        {item.amount.toLocaleString('en-US', {maximumFractionDigits: isGold ? 4 : 2})} 
-                        <span style={{fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'normal', marginLeft: '4px'}}>{isGold ? 'ONS' : ''}</span>
+                        {item.amount.toLocaleString('en-US', {maximumFractionDigits: item.symbol === 'BTC' ? 8 : isGold ? 6 : 2})}
+                        <span style={{fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'normal', marginLeft: '4px'}}>{{ GOLD: 'ONS', USD_TRY: 'USD', EUR_TRY: 'EUR', BTC: 'BTC' }[item.symbol] || ''}</span>
                       </h4>
                       {isGold && (
                         <p style={{ margin: '0.2rem 0 0 0', color: '#fbbf24', fontSize: '0.8rem' }}>
@@ -377,10 +382,11 @@ function Dashboard() {
             )}
           </div>
         )}
-        
+
         {/* Market Ticker Section */}
         <div className="market-ticker glass-panel">
           {renderTicker("USD_TRY", <DollarSign size={24} color="#4ade80" className="drop-shadow-green"/>, "USD/TRY", "₺", "GENERAL")}
+              {renderTicker("EUR_TRY", <Euro size={24} color="#60a5fa" />, "EUR/TRY", "₺", "GENERAL")}
           {renderTicker("GOLD", <Coins size={24} color="#fbbf24" style={{filter: 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.4))'}}/>, "Altın (ONS)", "$", "GENERAL")}
           {renderTicker("GRAM_GOLD", <Gem size={24} color="#fbbf24" style={{filter: 'drop-shadow(0 0 8px rgba(251, 191, 36, 0.4))'}}/>, "Gram Altın", "₺", "GENERAL")}
           {renderTicker("BTC", <Bitcoin size={24} color="#f7931a" style={{filter: 'drop-shadow(0 0 8px rgba(247, 147, 26, 0.4))'}}/>, "Bitcoin", "$", "CRYPTO")}
@@ -393,7 +399,7 @@ function Dashboard() {
             <div className={`mood-score ${moodClass}`}>{marketMood}</div>
             <p className="subtitle">Listelenen {news.length} habere göre</p>
           </div>
-          
+
           <div className="stat-card glass-panel flex-row">
             <div className="stat-item hover-scale">
               <TrendingUp color="#4ade80" size={32} className="drop-shadow-green"/>
@@ -417,10 +423,10 @@ function Dashboard() {
 
         <div className="section-header">
           <h2 className="section-title">Canlı Haber Akışı ve NLP Analizi</h2>
-          
+
           <div className="filters-container">
             {user && (
-              <div 
+              <div
                 className={`watchlist-toggle-wrapper ${showWatchlistOnly ? 'active' : ''}`}
                 onClick={() => setShowWatchlistOnly(!showWatchlistOnly)}
               >
@@ -430,7 +436,7 @@ function Dashboard() {
                 </span>
               </div>
             )}
-            
+
             <div className="filter-group">
               <Filter size={16} color="#94a3b8" />
               <select value={assetFilter} onChange={(e) => setAssetFilter(e.target.value)} className="glass-select" disabled={showWatchlistOnly}>
@@ -449,9 +455,9 @@ function Dashboard() {
             </div>
           </div>
         </div>
-        
+
         {error && <div className="error-box glass-panel">Bağlantı Hatası: {error}</div>}
-        
+
         <div className="news-grid">
           {loading && news.length === 0 ? (
             <div className="loading-state">
@@ -469,7 +475,7 @@ function Dashboard() {
                   <span className="source-tag">{item.source.toUpperCase()}</span>
                   <span className="time-tag">{new Date(item.published_at).toLocaleTimeString('tr-TR')}</span>
                   {user && (
-                    <button 
+                    <button
                       className={`watchlist-btn ${isWatched(item.asset_type) ? 'active' : ''}`}
                       onClick={(e) => handleWatchlistToggle(e, item.asset_type)}
                       style={{ marginLeft: 'auto' }}
@@ -492,7 +498,7 @@ function Dashboard() {
             ))
           )}
         </div>
-        
+
         {!loading && hasMore && news.length > 0 && !showWatchlistOnly && (
           <div className="load-more-container">
             <button className="load-more-btn glow-effect" onClick={() => fetchData(true)} disabled={loadingMore}>
