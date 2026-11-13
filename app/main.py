@@ -72,7 +72,7 @@ async def root():
 _health_task = None
 
 
-@app.get("/api/health", include_in_schema=False)
+@app.api_route("/api/health", methods=["GET", "HEAD"], include_in_schema=False)
 async def health():
     global _health_task
     async def check_dependencies():
